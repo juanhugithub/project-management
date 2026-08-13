@@ -14,6 +14,8 @@ import webbrowser
 import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
+from ledger.errors import DomainError
+from ledger import queries, services
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "project.db")
@@ -244,6 +246,7 @@ class Handler(BaseHTTPRequestHandler):
             self._err(405, "method not allowed"); return
         conn = get_db()
         try:
+            totals = queries.dashboard(conn)
             project_count = conn.execute("SELECT COUNT(*) c FROM project").fetchone()["c"]
             enterprise_count = conn.execute("SELECT COUNT(*) c FROM enterprise").fetchone()["c"]
             funded_total = conn.execute("SELECT COALESCE(SUM(amount),0) a FROM funding WHERE status='已到账'").fetchone()["a"]
@@ -266,6 +269,7 @@ class Handler(BaseHTTPRequestHandler):
                 "SELECT COALESCE(category,'未设置') AS key, COUNT(*) AS count FROM project "
                 "GROUP BY category ORDER BY count DESC").fetchall()]
             self._ok({
+                **totals,
                 "project_count": project_count,
                 "enterprise_count": enterprise_count,
                 "funded_total": round(funded_total, 2),
@@ -455,6 +459,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._ok({"disabled": did})
             else:
                 self._err(405, "method not allowed")
+        except DomainError as exc:
+            self._err(400, str(exc))
         except ValueError:
             self._err(400, "invalid id")
         finally:
@@ -597,13 +603,7 @@ class Handler(BaseHTTPRequestHandler):
                 payload = clean_payload(self._read_body(), "enterprise")
                 if not payload.get("name"):
                     self._err(400, "name is required"); return
-                cols = list(payload.keys())
-                sql = "INSERT INTO enterprise ({}) VALUES ({})".format(
-                    ", ".join(cols), ", ".join("?" * len(cols)))
-                cur = conn.execute(sql, [payload[c] for c in cols])
-                conn.commit()
-                row = conn.execute("SELECT * FROM enterprise WHERE id=?", (cur.lastrowid,)).fetchone()
-                self._ok(clean_row(row))
+                self._ok(services.create(conn, "enterprise", payload))
             elif method == "PUT" and len(parts) == 1:
                 eid = int(parts[0])
                 payload = clean_payload(self._read_body(), "enterprise")
@@ -623,6 +623,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._ok({"deleted": eid})
             else:
                 self._err(405, "method not allowed")
+        except DomainError as exc:
+            self._err(400, str(exc))
         except ValueError:
             self._err(400, "invalid id")
         finally:
@@ -691,40 +693,21 @@ class Handler(BaseHTTPRequestHandler):
                                 params.append(built[1])
                     except (ValueError, TypeError):
                         pass
-                sql = (
-                    "SELECT p.*, e.name AS enterprise_name, e.district AS enterprise_district, "
-                    "(SELECT COALESCE(SUM(f.amount),0) FROM funding f WHERE f.project_id=p.id) AS funded_total "
-                    "FROM project p LEFT JOIN enterprise e ON p.enterprise_id=e.id"
-                )
-                if where:
-                    sql += " WHERE " + " AND ".join(where)
-                sql += " ORDER BY p.id DESC"
-                rows = conn.execute(sql, params).fetchall()
-                self._ok([clean_row(r) for r in rows])
+                self._ok(queries.project_list(conn, {
+                    "level": qs.get("level", [None])[0], "category": qs.get("category", [None])[0],
+                    "stage": qs.get("stage", [None])[0], "enterprise_id": qs.get("enterprise_id", [None])[0],
+                    "district": qs.get("district", [None])[0], "query": qs.get("q", [None])[0]}))
             elif method == "GET" and len(parts) == 1:
                 pid = int(parts[0])
-                proj = conn.execute("SELECT * FROM project WHERE id=?", (pid,)).fetchone()
-                if not proj:
+                result = queries.project_detail(conn, pid)
+                if not result:
                     self._err(404, "project not found"); return
-                ent = conn.execute("SELECT * FROM enterprise WHERE id=?", (proj["enterprise_id"],)).fetchone()
-                fundings = conn.execute("SELECT * FROM funding WHERE project_id=? ORDER BY id", (pid,)).fetchall()
-                nodes = conn.execute("SELECT * FROM node WHERE project_id=? ORDER BY plan_date, id", (pid,)).fetchall()
-                result = clean_row(proj)
-                result["enterprise"] = clean_row(ent)
-                result["fundings"] = [clean_row(r) for r in fundings]
-                result["nodes"] = [clean_row(r) for r in nodes]
                 self._ok(result)
             elif method == "POST" and not parts:
                 payload = clean_payload(self._read_body(), "project")
                 if not payload.get("name"):
                     self._err(400, "name is required"); return
-                cols = list(payload.keys())
-                sql = "INSERT INTO project ({}) VALUES ({})".format(
-                    ", ".join(cols), ", ".join("?" * len(cols)))
-                cur = conn.execute(sql, [payload[c] for c in cols])
-                conn.commit()
-                row = conn.execute("SELECT * FROM project WHERE id=?", (cur.lastrowid,)).fetchone()
-                self._ok(clean_row(row))
+                self._ok(services.create(conn, "project", payload))
             elif method == "PUT" and len(parts) == 1:
                 pid = int(parts[0])
                 if self._is_archived_project(conn, pid):
@@ -732,13 +715,7 @@ class Handler(BaseHTTPRequestHandler):
                 payload = clean_payload(self._read_body(), "project")
                 if not payload:
                     self._err(400, "no fields"); return
-                sets = ", ".join(f"{k}=?" for k in payload)
-                conn.execute(
-                    f"UPDATE project SET {sets}, updated_at=datetime('now','localtime') WHERE id=?",
-                    [*payload.values(), pid])
-                conn.commit()
-                row = conn.execute("SELECT * FROM project WHERE id=?", (pid,)).fetchone()
-                self._ok(clean_row(row))
+                self._ok(services.update_project(conn, pid, payload))
             elif method == "DELETE" and len(parts) == 1:
                 pid = int(parts[0])
                 if self._is_archived_project(conn, pid):
@@ -748,6 +725,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._ok({"deleted": pid})
             else:
                 self._err(405, "method not allowed")
+        except DomainError as exc:
+            self._err(400, str(exc))
         except ValueError:
             self._err(400, "invalid id")
         finally:
@@ -777,12 +756,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._err(400, "project_id is required"); return
                 if self._is_archived_project(conn, payload["project_id"]):
                     self._err(403, "该项目已归档，禁止新增"); return
-                cols = list(payload.keys())
-                sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"
-                cur = conn.execute(sql, [payload[c] for c in cols])
-                conn.commit()
-                row = conn.execute(f"SELECT * FROM {table} WHERE id=?", (cur.lastrowid,)).fetchone()
-                self._ok(clean_row(row))
+                self._ok(services.create(conn, table, payload))
             elif method == "PUT" and len(parts) == 1:
                 rid = int(parts[0])
                 row = conn.execute(f"SELECT project_id FROM {table} WHERE id=?", (rid,)).fetchone()
@@ -791,11 +765,7 @@ class Handler(BaseHTTPRequestHandler):
                 payload = clean_payload(self._read_body(), table)
                 if not payload:
                     self._err(400, "no fields"); return
-                sets = ", ".join(f"{k}=?" for k in payload)
-                conn.execute(f"UPDATE {table} SET {sets} WHERE id=?", [*payload.values(), rid])
-                conn.commit()
-                row = conn.execute(f"SELECT * FROM {table} WHERE id=?", (rid,)).fetchone()
-                self._ok(clean_row(row))
+                self._ok(services.update(conn, table, rid, payload))
             elif method == "DELETE" and len(parts) == 1:
                 rid = int(parts[0])
                 row = conn.execute(f"SELECT project_id FROM {table} WHERE id=?", (rid,)).fetchone()
@@ -806,6 +776,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._ok({"deleted": rid})
             else:
                 self._err(405, "method not allowed")
+        except DomainError as exc:
+            self._err(400, str(exc))
         except ValueError:
             self._err(400, "invalid id")
         finally:

@@ -13,6 +13,7 @@ import os
 import sqlite3
 
 from mcp.server.fastmcp import FastMCP
+from ledger import queries
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "project.db")
@@ -34,26 +35,10 @@ def rows_to_list(rows):
 @mcp.tool()
 def list_projects(level: str = None, category: str = None, stage: str = None,
                   query: str = None) -> list:
-    """查询项目列表。可按层级(level: 国家级/省级/苏州市级/昆山本级)、类型(category)、阶段(stage)、关键词(query)过滤。返回项目核心字段，含承担企业名(enterprise_name)与已到位资金合计(funded_total)。"""
+    """查询项目列表，返回 planned_total、disbursed_total、received_total 三项统一资金口径。"""
     conn = get_db()
     try:
-        sql = ("SELECT p.id, p.name, p.project_no, p.level, p.category, p.total_amount, "
-               "p.start_date, p.end_date, p.stage, p.match_ratio, p.leader, p.contact_phone, "
-               "e.name AS enterprise_name, "
-               "(SELECT COALESCE(SUM(f.amount),0) FROM funding f WHERE f.project_id=p.id) AS funded_total "
-               "FROM project p LEFT JOIN enterprise e ON p.enterprise_id=e.id WHERE 1=1")
-        params = []
-        if level:
-            sql += " AND p.level=?"; params.append(level)
-        if category:
-            sql += " AND p.category=?"; params.append(category)
-        if stage:
-            sql += " AND p.stage=?"; params.append(stage)
-        if query:
-            sql += " AND (p.name LIKE ? OR p.project_no LIKE ? OR e.name LIKE ?)"
-            like = f"%{query}%"; params += [like, like, like]
-        sql += " ORDER BY p.id DESC"
-        return rows_to_list(conn.execute(sql, params).fetchall())
+        return queries.project_list(conn, {"level": level, "category": category, "stage": stage, "query": query})
     finally:
         conn.close()
 
@@ -63,16 +48,9 @@ def get_project(project_id: int) -> dict:
     """按 ID 查询单个项目全貌：基本信息 + 承担企业 + 资金明细(fundings) + 节点明细(nodes)。"""
     conn = get_db()
     try:
-        proj = conn.execute("SELECT * FROM project WHERE id=?", (project_id,)).fetchone()
-        if not proj:
+        result = queries.project_detail(conn, project_id)
+        if not result:
             return {"error": "项目不存在"}
-        ent = conn.execute("SELECT * FROM enterprise WHERE id=?", (proj["enterprise_id"],)).fetchone()
-        fundings = conn.execute("SELECT * FROM funding WHERE project_id=? ORDER BY id", (project_id,)).fetchall()
-        nodes = conn.execute("SELECT * FROM node WHERE project_id=? ORDER BY plan_date, id", (project_id,)).fetchall()
-        result = dict(proj)
-        result["enterprise"] = dict(ent) if ent else None
-        result["fundings"] = rows_to_list(fundings)
-        result["nodes"] = rows_to_list(nodes)
         return result
     finally:
         conn.close()

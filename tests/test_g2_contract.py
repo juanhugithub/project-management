@@ -149,12 +149,6 @@ def _seed_money_sample(client):
 #    并通过 API 详情、UI 列表/工作台端点、MCP 查询层比对完全相等。
 #    断言引用规定字段名与精确数值：字段缺失（KeyError）即测试失败 → XFAIL。
 # ===========================================================================
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现统一资金口径字段：app.py 详情/列表/工作台与 mcp_server 均只有 "
-    "funded_total / plan_total（且 P0-01 两处语义分歧），没有 planned_total / "
-    "disbursed_total / received_total。契约（ADR-0001 决策一）：三口径必须按"
-    "『plan_date 是否为空、status∈(已拨付,已到账)、status=已到账』精确计算并"
-    "存于各层 API 返回，且各层完全相等。"))
 def test_funding_three_totals_across_api_ui_mcp(tmp_db, client, monkeypatch):
     """同一份样本：API 详情 / UI 列表 / UI 工作台 / MCP 查询层 三口径逐项相等。"""
     import mcp_server
@@ -192,11 +186,6 @@ def test_funding_three_totals_across_api_ui_mcp(tmp_db, client, monkeypatch):
         assert len(values) == 1, f"{key} 在各层取值不一致: {values}"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现资金状态-日期一致性校验：app._api_child 对 funding 仅要求 "
-    "project_id，status='已拨付' 且 actual_date 为空也被接受。契约"
-    "（ADR-0001 决策一）：actual_date 是『实拨时间』，已拨付/已到账必有实拨"
-    "日期，违者 400 且不写库。"))
 def test_funding_disbursed_requires_actual_date(tmp_db, client):
     """status=已拨付 但无 actual_date 必须 400 且不写库（当前被接受并写入）。"""
     _, ent = _new_enterprise(client, "91320000G2SEM02")
@@ -210,10 +199,6 @@ def test_funding_disbursed_requires_actual_date(tmp_db, client):
     assert _count_rows(tmp_db, "funding") == before, "非法资金记录被写入"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现资金状态-日期一致性校验：status='已到账' 且 actual_date 为空也"
-    "被接受。契约（ADR-0001 决策一）：已到账必先已拨付 → 必须有实拨日期，"
-    "违者 400 且不写库。"))
 def test_funding_received_requires_actual_date(tmp_db, client):
     """status=已到账 但无 actual_date 必须 400 且不写库（当前被接受并写入）。"""
     _, ent = _new_enterprise(client, "91320000G2SEM03")
@@ -227,10 +212,6 @@ def test_funding_received_requires_actual_date(tmp_db, client):
     assert _count_rows(tmp_db, "funding") == before, "非法资金记录被写入"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现资金状态-日期一致性校验：status='未拨付' 却带 actual_date 也被"
-    "接受。契约（ADR-0001 决策一）：未拨付意味着拨付动作未发生，不应有实拨"
-    "时间，违者 400 且不写库。"))
 def test_funding_unpaid_forbids_actual_date(tmp_db, client):
     """status=未拨付 却带 actual_date 必须 400 且不写库（当前被接受并写入）。"""
     _, ent = _new_enterprise(client, "91320000G2SEM04")
@@ -249,11 +230,6 @@ def test_funding_unpaid_forbids_actual_date(tmp_db, client):
 #    同 enterprise 同 project_no 重复拒绝；不同企业同号允许；
 #    无编号 POST 项目拒绝且无入库。
 # ===========================================================================
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实施唯一键：schema.sql 的 project 表无 (project_no, enterprise_id) "
-    "唯一约束，app._api_project POST 也不校验 project_no。契约（ADR-0001 "
-    "决策二）：同一企业下 project_no 重复必须 400/409 且不写库；不同企业的"
-    "相同 project_no 合法（对照断言，当前亦通过——G2 实现后整体转绿）。"))
 def test_project_unique_key_duplicate_rejected(tmp_db, client):
     """同一企业 + 同一 project_no 重复创建必须拒绝；不同企业同号允许。"""
     _, ent_a = _new_enterprise(client, "91320000G2UNI01", "唯一键企业A")
@@ -300,11 +276,6 @@ def test_project_without_project_no_rejected(tmp_db, client):
 #    中止仅限【已立项、实施中、待验收】且为不可恢复终态；
 #    撤销源为除【已完结、中止、撤销】外的全部阶段且不可恢复。
 # ===========================================================================
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实施状态机：app._api_project POST/PUT 对 stage 无任何校验，任意值"
-    "可写入/跳转。契约（ADR-0001 决策三）：正常流转仅沿链相邻前进（申报中→"
-    "已立项→实施中→待验收→已验收→绩效跟踪→已完结），回退/跳跃必须拒绝且"
-    "库中阶段不改变。"))
 def test_stage_machine_forward_chain_only(tmp_db, client):
     """正常链逐级前进允许；回退/跳跃拒绝且库中阶段不改变。"""
     _, ent = _new_enterprise(client, "91320000G2STM01")
@@ -332,10 +303,6 @@ def test_stage_machine_forward_chain_only(tmp_db, client):
     assert _get_stage(tmp_db, pid2) == "申报中", "跳跃后库中阶段被改变"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实施中止源阶段限定：任意阶段都可 PUT 为『中止』。契约（ADR-0001 "
-    "决策三）：中止仅允许从【已立项、实施中、待验收】进入，其余阶段（申报中、"
-    "已验收、绩效跟踪、已完结等）必须拒绝。"))
 def test_stage_abort_enter_restricted(tmp_db, client):
     """中止仅限已立项/实施中/待验收进入；其他阶段拒绝。"""
     _, ent = _new_enterprise(client, "91320000G2STM02")
@@ -366,10 +333,6 @@ def test_stage_abort_enter_restricted(tmp_db, client):
     assert status in (400, 403, 409), f"已完结进入中止被接受: status={status} {resp}"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实施中止终态保护：进入中止后仍可 PUT 为其他任意状态。契约"
-    "（ADR-0001 决策三）：中止为不可恢复终态，进入后不得再流转到任何状态"
-    "（含撤销），且库中阶段保持『中止』。"))
 def test_stage_abort_terminal_not_recoverable(tmp_db, client):
     """中止为不可恢复终态：后续任何流转（含撤销）必须拒绝。"""
     _, ent = _new_enterprise(client, "91320000G2STM03")
@@ -389,10 +352,6 @@ def test_stage_abort_terminal_not_recoverable(tmp_db, client):
         assert _get_stage(tmp_db, pid) == "中止", "中止终态被恢复/改变"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实施撤销规则：任意阶段都可 PUT 为『撤销』，撤销后仍可流转。契约"
-    "（ADR-0001 决策三）：撤销源为除【已完结、中止、撤销】外的全部阶段，"
-    "撤销为不可恢复终态（不得再流转到任何状态）。"))
 def test_stage_revoke_adr_constrained_and_terminal(tmp_db, client):
     """撤销源阶段限定（ADR）+ 撤销不可恢复。"""
     _, ent = _new_enterprise(client, "91320000G2STM04")
@@ -430,11 +389,6 @@ def test_stage_revoke_adr_constrained_and_terminal(tmp_db, client):
 # ===========================================================================
 @pytest.mark.parametrize("amount", [-1, 1.234, float("nan"), float("inf"),
                                     float("-inf"), "abc"])
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现金额校验：app.clean_payload 对文本 float() 失败后静默置 None"
-    "（P0-02），负数/超两位小数/NaN/Inf 直接写入 REAL。契约（ADR-0001 决策一/"
-    "PLAN §3.2）：金额必须非负、最多两位小数、不得 NaN/Inf/文本，非法输入"
-    "必须 400 且不写库。"))
 def test_illegal_funding_amount_rejected(tmp_db, client, amount):
     """funding.amount 为 -1/1.234/NaN/Inf/文本 → 400 且不写库。"""
     _, ent = _new_enterprise(client, "91320000G2AMT01")
@@ -449,10 +403,6 @@ def test_illegal_funding_amount_rejected(tmp_db, client, amount):
 
 
 @pytest.mark.parametrize("total_amount", [-1, 1.234, float("nan"), float("inf"), "abc"])
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现项目总金额校验：project.total_amount 与 funding.amount 同属金额，"
-    "契约（ADR-0001 决策一/PLAN §3.2）同样要求非负、最多两位小数、不得 "
-    "NaN/Inf/文本。"))
 def test_illegal_project_total_amount_rejected(tmp_db, client, total_amount):
     """project.total_amount 非法 → 400 且不写库。"""
     _, ent = _new_enterprise(client, "91320000G2AMT02")
@@ -475,9 +425,6 @@ def test_illegal_project_total_amount_rejected(tmp_db, client, total_amount):
     ("end_date", "2026-1-1"),       # 格式错误：月份/日非两位
     ("end_date", "2026-02-30"),     # 日历错误
 ])
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现日期校验：app 对 start_date/end_date 无格式/日历校验。契约"
-    "（PLAN §3.2）：日期必须为有效 YYYY-MM-DD（含日历有效性），否则 400 且不写库。"))
 def test_illegal_project_date_rejected(tmp_db, client, field, value):
     """项目日期格式/日历非法 → 400 且不写库。"""
     _, ent = _new_enterprise(client, "91320000G2DAT01")
@@ -491,9 +438,6 @@ def test_illegal_project_date_rejected(tmp_db, client, field, value):
     assert _count_rows(tmp_db, "project") == before, "非法日期被写入"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现日期范围校验：start_date 晚于 end_date 被接受。契约（PLAN §3.2）："
-    "开始日期不得晚于结束日期，否则 400 且不写库。"))
 def test_illegal_project_date_range_rejected(tmp_db, client):
     """start_date > end_date → 400 且不写库。"""
     _, ent = _new_enterprise(client, "91320000G2DAT02")
@@ -513,9 +457,6 @@ def test_illegal_project_date_range_rejected(tmp_db, client):
     ("actual_date", "2026.06.01"),  # 格式错误
     ("actual_date", "2026-02-30"),  # 日历错误
 ])
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现资金日期校验：funding.plan_date/actual_date 非法值被接受。契约"
-    "（PLAN §3.2）：所有日期字段必须为有效 YYYY-MM-DD，否则 400 且不写库。"))
 def test_illegal_funding_date_rejected(tmp_db, client, field, value):
     """资金计划/实拨日期格式、日历非法 → 400 且不写库。"""
     _, ent = _new_enterprise(client, "91320000G2DAT03")
@@ -537,10 +478,6 @@ def test_illegal_funding_date_rejected(tmp_db, client, field, value):
     ("enterprise", "enterprise_type", "乱写企业类型"),
     ("enterprise", "district", "乱写区镇"),
 ])
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现字典校验：app 对 level/category/funding_source/node_type/"
-    "enterprise_type/district 无字典校验（P0-02 同类问题）。契约（PLAN §3.2）："
-    "这些字段必须引用 dict_item 中存在的取值，非法值必须 400 且不写库。"))
 def test_illegal_dict_value_rejected(tmp_db, client, case):
     """各枚举字段引用不存在的字典项 → 400 且不写库。"""
     kind, field, bad = case
@@ -583,10 +520,6 @@ def _disable_dict_item(client, dict_type, value):
     assert status == 200, f"停用字典项失败: status={status} {resp}"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未校验字典项启用状态：停用后 POST 项目/资金不校验 is_active。契约"
-    "（PLAN §3.2）：停用字典项仍可显示历史值，但不得再用于新增或修改，"
-    "违者 400 且不写库。"))
 def test_disabled_dict_item_rejected(client):
     """停用 level/funding_source 后，新增项目/资金不得再引用 → 400。"""
     _, ent = _new_enterprise(client, "91320000G2DIC03")
@@ -611,10 +544,6 @@ def test_disabled_dict_item_rejected(client):
     assert status in (400, 403, 409), f"停用字典值被用于新增资金: status={status} {resp}"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未捕获企业不存在错误：sqlite3.IntegrityError 未处理 → 连接重置 → "
-    "599/connection failed。契约（PLAN §3.2『存在且未删除的承担企业』）："
-    "企业不存在必须返回明确 400 与可读错误信息，并证明无新增行。"))
 def test_nonexistent_enterprise_rejected(tmp_db, client):
     """企业不存在 → 明确 400 + 可读 error + 无新增行（当前 599/connection failed）。"""
     before = _count_rows(tmp_db, "project")
@@ -683,11 +612,6 @@ def _direct_sql_expect_rejected(tmp_db, sql, params, table):
     return _count_rows(tmp_db, table) == before
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未在数据库层约束金额：schema.sql 的 funding.amount 无 CHECK 约束，"
-    "直接 INSERT 负数/超两位小数可绕过 API 校验。契约（ADR-0001 决策一 + "
-    "PLAN G2『数据库触发器 + 领域校验双保险』）：直接 SQL 写入非法金额必须"
-    "被 IntegrityError 拒绝或行未写入。"))
 def test_direct_sql_illegal_funding_amount_rejected(tmp_db, client):
     """直接 SQL INSERT funding amount=-1 必须无法突破（IntegrityError 或行未写入）。"""
     _, ent = _new_enterprise(client, "91320000G2SQL01")
@@ -702,10 +626,6 @@ def test_direct_sql_illegal_funding_amount_rejected(tmp_db, client):
     assert rejected, "直接 SQL 写入非法金额 -1 未被数据库层拦截"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未在数据库层约束资金状态-日期一致性：直接 INSERT 已到账/已拨付却无 "
-    "actual_date、未拨付却带 actual_date 均可绕过 API 校验。契约（ADR-0001 "
-    "决策一 + 双保险）：直接 SQL 写入非法组合必须被拒绝或行未写入。"))
 def test_direct_sql_invalid_funding_date_status_rejected(tmp_db, client):
     """直接 SQL INSERT 状态-日期非法组合必须无法突破。"""
     _, ent = _new_enterprise(client, "91320000G2SQL02")
@@ -729,10 +649,6 @@ def test_direct_sql_invalid_funding_date_status_rejected(tmp_db, client):
     assert rejected2, "直接 SQL 写入『未拨付带实拨日期』未被拦截"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未加 (project_no, enterprise_id) 唯一索引：直接 INSERT 同企业同号项目"
-    "可绕过 API 校验。契约（ADR-0001 决策二 + PLAN G2 工作项 4）：数据库层"
-    "必须存在唯一索引，直接 SQL 写入重复唯一键必须 IntegrityError。"))
 def test_direct_sql_duplicate_project_no_rejected(tmp_db, client):
     """直接 SQL INSERT 同企业同号项目必须无法突破（唯一索引）。"""
     _, ent = _new_enterprise(client, "91320000G2SQL03")
@@ -746,10 +662,6 @@ def test_direct_sql_duplicate_project_no_rejected(tmp_db, client):
     assert rejected, "直接 SQL 写入同企业重复 project_no 未被唯一索引拦截"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未在数据库层实施状态机：直接 UPDATE stage 跳跃/非法进入中止可绕过 API "
-    "校验。契约（ADR-0001 决策三 + PLAN G2『触发器 + 领域校验双保险』）："
-    "直接 SQL 非法流转必须被触发器拒绝或 stage 不改变。"))
 def test_direct_sql_illegal_stage_update_rejected(tmp_db, client):
     """直接 SQL UPDATE stage 跳跃（申报中→已完结）必须无法突破。"""
     _, ent = _new_enterprise(client, "91320000G2SQL04")
@@ -774,11 +686,6 @@ def test_direct_sql_illegal_stage_update_rejected(tmp_db, client):
 #    monkeypatch mcp_server.DB_PATH/BASE_DIR 指向 tmp_db（安全注入），
 #    直接调用公开查询函数比对三口径，绝不触碰正式库。
 # ===========================================================================
-@pytest.mark.xfail(strict=True, reason=(
-    "MCP 查询层未输出三口径：mcp_server.list_projects 只返回 funded_total "
-    "（且无状态过滤），get_project 只返回明细无汇总。契约（ADR-0001 决策一/"
-    "PLAN §3.1）：MCP 查询层必须输出 planned_total / disbursed_total / "
-    "received_total 且与 API/UI 层完全一致。MCP monkeypatch 注入本身已验证。"))
 def test_mcp_funding_totals_consistent_with_api(tmp_db, client, monkeypatch):
     """MCP 查询层（注入 tmp_db）三口径必须与 API 详情一致。"""
     import mcp_server
