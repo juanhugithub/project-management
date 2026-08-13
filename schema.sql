@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS enterprise (
     address         TEXT,                        -- 地址
     note            TEXT,                        -- 备注
     created_at      TEXT DEFAULT (datetime('now','localtime')),
-    updated_at      TEXT DEFAULT (datetime('now','localtime'))
+    updated_at      TEXT DEFAULT (datetime('now','localtime')),
+    is_deleted      INTEGER NOT NULL DEFAULT 0,   -- G3 软删除标记：0=正常 1=已删除
+    deleted_at      TEXT                          -- G3 软删除时间（本地时间）
 );
 
 -- 2. 项目表
@@ -36,7 +38,9 @@ CREATE TABLE IF NOT EXISTS project (
     contact_phone   TEXT,                        -- 联系人手机号
     note            TEXT,                        -- 备注
     created_at      TEXT DEFAULT (datetime('now','localtime')),
-    updated_at      TEXT DEFAULT (datetime('now','localtime'))
+    updated_at      TEXT DEFAULT (datetime('now','localtime')),
+    is_deleted      INTEGER NOT NULL DEFAULT 0,   -- G3 软删除标记：0=正常 1=已删除
+    deleted_at      TEXT                          -- G3 软删除时间（本地时间）
 );
 
 -- 3. 资金表
@@ -50,7 +54,9 @@ CREATE TABLE IF NOT EXISTS funding (
     actual_date     TEXT,                        -- 实拨时间
     status          TEXT,                        -- 未拨付/已拨付/已到账
     note            TEXT,
-    created_at      TEXT DEFAULT (datetime('now','localtime'))
+    created_at      TEXT DEFAULT (datetime('now','localtime')),
+    is_deleted      INTEGER NOT NULL DEFAULT 0,   -- G3 软删除标记：0=正常 1=已删除
+    deleted_at      TEXT                          -- G3 软删除时间（本地时间）
 );
 
 -- 4. 节点表
@@ -63,7 +69,9 @@ CREATE TABLE IF NOT EXISTS node (
     status            TEXT,                      -- 待办/已完成/已逾期
     has_major_change  INTEGER DEFAULT 0,         -- 是否发生重大事项变更 0/1
     note              TEXT,
-    created_at        TEXT DEFAULT (datetime('now','localtime'))
+    created_at        TEXT DEFAULT (datetime('now','localtime')),
+    is_deleted        INTEGER NOT NULL DEFAULT 0, -- G3 软删除标记：0=正常 1=已删除
+    deleted_at        TEXT                        -- G3 软删除时间（本地时间）
 );
 
 -- 5. 配置表（可枚举取值的唯一来源）
@@ -126,6 +134,23 @@ INSERT INTO dict_item (dict_type, value, sort_order) VALUES
     ('enterprise_type', '科技型中小企业',   2),
     ('enterprise_type', '规上工业',         3),
     ('enterprise_type', '其他',             4);
+
+-- 6. 审计日志表（G3，设计见 docs/migrations/迁移清单.md M004）
+CREATE TABLE IF NOT EXISTS audit_log (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts             TEXT NOT NULL,              -- 操作时间（本地时间）
+    operator       TEXT NOT NULL,              -- 操作者标识（本地用户名/固定操作者）
+    action         TEXT NOT NULL,              -- 操作动作（create/update/delete/archive/unarchive/restore 等）
+    object_type    TEXT NOT NULL,              -- 对象类型（enterprise/project/funding/node/system）
+    object_id      INTEGER,                    -- 对象 id（无主键对象可为 NULL）
+    before_summary TEXT,                       -- 操作前摘要（关键字段 JSON）
+    after_summary  TEXT,                       -- 操作后摘要（关键字段 JSON）
+    reason         TEXT,                       -- 理由（解除归档/删除/恢复等必填项）
+    source_batch   TEXT,                       -- 来源批次号（导入/迁移）
+    note           TEXT                        -- 备注
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts     ON audit_log(ts);
+CREATE INDEX IF NOT EXISTS idx_audit_object ON audit_log(object_type, object_id);
 
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_project_enterprise ON project(enterprise_id);

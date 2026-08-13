@@ -10,6 +10,7 @@ M003/M004 已确认设计。本文件只使用 conftest 提供的临时数据库
 """
 
 import pytest
+import sqlite3
 
 from conftest import db_conn
 
@@ -77,11 +78,28 @@ def _audit_rows(tmp_db, sql, params=()):
         conn.close()
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G3 尚未将年度归档集中到 services 写入口：当前项目 POST 未检查归档年度。"
-    "契约（PLAN §3.3/§5 G3）：归档年度必须同时拒绝项目、资金、节点的创建、"
-    "修改、删除；已实现的局部 PUT/DELETE 拦截不能替代完整覆盖。"
-))
+def test_g3_migration_runs_only_on_explicit_temporary_database(tmp_path):
+    """受控迁移必须可在临时旧库升级，且调用者显式提供连接。"""
+    from migrations import apply
+
+    db_path = tmp_path / "legacy_g2.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        # 这是 G2 已有表的最小字段集合，模拟升级前数据库而非正式 data/project.db。
+        conn.executescript("""
+            CREATE TABLE enterprise(id INTEGER PRIMARY KEY, name TEXT, credit_code TEXT, enterprise_type TEXT, district TEXT);
+            CREATE TABLE project(id INTEGER PRIMARY KEY, project_no TEXT, enterprise_id INTEGER, stage TEXT);
+            CREATE TABLE funding(id INTEGER PRIMARY KEY, project_id INTEGER, amount REAL, status TEXT, actual_date TEXT);
+            CREATE TABLE node(id INTEGER PRIMARY KEY, project_id INTEGER);
+        """)
+        apply(conn)
+        assert {row[1] for row in conn.execute("PRAGMA table_info(project)")} >= {"is_deleted", "deleted_at"}
+        assert conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'").fetchone()
+        assert conn.execute("SELECT version FROM schema_migration WHERE version='002_g3_soft_delete_audit.sql'").fetchone()
+    finally:
+        conn.close()
+
+
 def test_archived_year_blocks_project_funding_and_node_all_mutations(client):
     """归档 2024 后，三类对象的 POST/PUT/DELETE 必须全部返回 403。"""
     enterprise = _new_enterprise(client)
@@ -112,11 +130,6 @@ def test_archived_year_blocks_project_funding_and_node_all_mutations(client):
         assert actual == 403, f"{label}未被归档规则拒绝: status={actual}, body={response}"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G3 尚未实施 M003：当前 DELETE 物理删除 project，默认 API/MCP 也没有过滤 "
-    "is_deleted。契约（PLAN §3.3/迁移清单 M003）：删除必须保留记录并设置 "
-    "is_deleted/deleted_at，默认 API 和 MCP 查询均不可返回该记录。"
-))
 def test_soft_deleted_project_is_retained_but_hidden_from_api_and_mcp(tmp_db, client, monkeypatch):
     """项目删除必须软删除；HTTP 和 MCP 的默认列表、详情均不得泄漏它。"""
     import mcp_server
@@ -146,11 +159,6 @@ def test_soft_deleted_project_is_retained_but_hidden_from_api_and_mcp(tmp_db, cl
     assert mcp_server.get_project(project["id"]).get("error"), "MCP 详情仍可读取已删除项目"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G3 尚未实施 M004 audit_log。契约（PLAN §5 G3/迁移清单 M004）：创建、"
-    "修改、软删除、归档、解除归档均须留下带对象、动作、时间、操作者和前后摘要的"
-    "可读审计记录；解除归档还必须保留理由。"
-))
 def test_high_risk_operations_write_complete_audit_records(tmp_db, client):
     """五类 G3 高风险操作必须逐项留下完整、可读的审计证据。"""
     enterprise = _new_enterprise(client)
@@ -186,11 +194,6 @@ def test_high_risk_operations_write_complete_audit_records(tmp_db, client):
     assert unarchive["reason"] == "G3 测试解除归档", "解除归档审计未保存理由"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G3 尚未提供受约束的恢复路径。契约（PLAN §3.3/§5 G3、迁移清单 M003）："
-    "恢复软删除资金时，归档年度必须先拒绝；解除归档后若所属项目仍被删除，"
-    "引用完整性仍必须拒绝恢复，且记录保持删除状态。"
-))
 def test_restore_rejects_archived_year_and_deleted_parent(tmp_db, client):
     """恢复必须同时受归档规则和有效父项目引用约束，不能复活孤儿资金。"""
     enterprise = _new_enterprise(client)

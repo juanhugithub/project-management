@@ -64,9 +64,9 @@ def list_enterprises(district: str = None, enterprise_type: str = None) -> list:
     try:
         sql = ("SELECT e.id, e.name, e.credit_code, e.enterprise_type, e.qualifications, "
                "e.district, e.contact_person, e.contact_phone, e.address, "
-               "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id) AS project_count, "
-               "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id) AS total_amount_sum "
-               "FROM enterprise e WHERE 1=1")
+                "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS project_count, "
+                "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS total_amount_sum "
+                "FROM enterprise e WHERE e.is_deleted=0")
         params = []
         if district:
             sql += " AND e.district=?"; params.append(district)
@@ -83,10 +83,10 @@ def get_enterprise(enterprise_id: int) -> dict:
     """按 ID 查询企业画像：基本信息 + 该企业承担的全部项目(projects)。"""
     conn = get_db()
     try:
-        ent = conn.execute("SELECT * FROM enterprise WHERE id=?", (enterprise_id,)).fetchone()
+        ent = conn.execute("SELECT * FROM enterprise WHERE id=? AND is_deleted=0", (enterprise_id,)).fetchone()
         if not ent:
             return {"error": "企业不存在"}
-        projects = conn.execute("SELECT * FROM project WHERE enterprise_id=? ORDER BY id DESC", (enterprise_id,)).fetchall()
+        projects = conn.execute("SELECT * FROM project WHERE enterprise_id=? AND is_deleted=0 ORDER BY id DESC", (enterprise_id,)).fetchall()
         result = dict(ent)
         result["projects"] = rows_to_list(projects)
         return result
@@ -101,9 +101,9 @@ def list_fundings(project_id: int = None) -> list:
     conn = get_db()
     try:
         if project_id:
-            rows = conn.execute("SELECT * FROM funding WHERE project_id=? ORDER BY id", (project_id,)).fetchall()
+            rows = conn.execute("SELECT * FROM funding WHERE project_id=? AND is_deleted=0 ORDER BY id", (project_id,)).fetchall()
         else:
-            rows = conn.execute("SELECT * FROM funding ORDER BY id DESC").fetchall()
+            rows = conn.execute("SELECT * FROM funding WHERE is_deleted=0 ORDER BY id DESC").fetchall()
         return rows_to_list(rows)
     finally:
         conn.close()
@@ -115,9 +115,9 @@ def list_nodes(project_id: int = None) -> list:
     conn = get_db()
     try:
         if project_id:
-            rows = conn.execute("SELECT * FROM node WHERE project_id=? ORDER BY plan_date, id", (project_id,)).fetchall()
+            rows = conn.execute("SELECT * FROM node WHERE project_id=? AND is_deleted=0 ORDER BY plan_date, id", (project_id,)).fetchall()
         else:
-            rows = conn.execute("SELECT * FROM node ORDER BY plan_date, id").fetchall()
+            rows = conn.execute("SELECT * FROM node WHERE is_deleted=0 ORDER BY plan_date, id").fetchall()
         return rows_to_list(rows)
     finally:
         conn.close()

@@ -63,7 +63,7 @@ def init_db():
         conn.commit()
         conn.close()
     else:
-        # 增量迁移：确保 system_config 表存在（老库升级）
+        # 老库兼容仅确保归档配置存在；结构迁移必须由维护人员显式调用 migrations.apply。
         conn = get_db()
         conn.executescript(
             "CREATE TABLE IF NOT EXISTS system_config ("
@@ -331,15 +331,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._ok(out)
             elif method == "PUT":
                 body = self._read_body()
-                for k, v in (body or {}).items():
-                    if k == "archived_years":
-                        val = ",".join(v) if isinstance(v, list) else str(v)
-                    else:
-                        val = str(v) if v is not None else ""
-                    conn.execute(
-                        "INSERT INTO system_config (key, value) VALUES (?,?) "
-                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, val))
-                conn.commit()
+                years = (body or {}).get("archived_years")
+                if not isinstance(years, list):
+                    self._err(400, "archived_years must be list"); return
+                services.set_archived_years(conn, years, (body or {}).get("reason"))
                 self._ok({"saved": True})
             else:
                 self._err(405, "method not allowed")
@@ -460,7 +455,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._err(405, "method not allowed")
         except DomainError as exc:
-            self._err(400, str(exc))
+            self._err(403 if '已归档' in str(exc) else 409 if '父项目' in str(exc) else 400, str(exc))
         except ValueError:
             self._err(400, "invalid id")
         finally:
@@ -583,18 +578,18 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and not parts:
                 rows = conn.execute(
                     "SELECT e.*, "
-                    "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id) AS project_count, "
-                    "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id) AS total_amount_sum "
-                    "FROM enterprise e ORDER BY e.id DESC"
+                    "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS project_count, "
+                    "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS total_amount_sum "
+                    "FROM enterprise e WHERE e.is_deleted=0 ORDER BY e.id DESC"
                 ).fetchall()
                 self._ok([clean_row(r) for r in rows])
             elif method == "GET" and len(parts) == 1:
                 eid = int(parts[0])
-                ent = conn.execute("SELECT * FROM enterprise WHERE id=?", (eid,)).fetchone()
+                ent = conn.execute("SELECT * FROM enterprise WHERE id=? AND is_deleted=0", (eid,)).fetchone()
                 if not ent:
                     self._err(404, "enterprise not found"); return
                 projects = conn.execute(
-                    "SELECT * FROM project WHERE enterprise_id=? ORDER BY id DESC", (eid,)
+                    "SELECT * FROM project WHERE enterprise_id=? AND is_deleted=0 ORDER BY id DESC", (eid,)
                 ).fetchall()
                 result = clean_row(ent)
                 result["projects"] = [clean_row(r) for r in projects]
@@ -609,22 +604,17 @@ class Handler(BaseHTTPRequestHandler):
                 payload = clean_payload(self._read_body(), "enterprise")
                 if not payload:
                     self._err(400, "no fields"); return
-                sets = ", ".join(f"{k}=?" for k in payload)
-                conn.execute(
-                    f"UPDATE enterprise SET {sets}, updated_at=datetime('now','localtime') WHERE id=?",
-                    [*payload.values(), eid])
-                conn.commit()
-                row = conn.execute("SELECT * FROM enterprise WHERE id=?", (eid,)).fetchone()
-                self._ok(clean_row(row))
+                self._ok(services.update(conn, "enterprise", eid, payload))
             elif method == "DELETE" and len(parts) == 1:
                 eid = int(parts[0])
-                conn.execute("DELETE FROM enterprise WHERE id=?", (eid,))
-                conn.commit()
+                services.soft_delete(conn, "enterprise", eid, self._read_body().get("reason"))
                 self._ok({"deleted": eid})
+            elif method == "POST" and len(parts) == 2 and parts[1] == "restore":
+                self._ok(services.restore(conn, "enterprise", int(parts[0]), self._read_body().get("reason")))
             else:
                 self._err(405, "method not allowed")
         except DomainError as exc:
-            self._err(400, str(exc))
+            self._err(403 if '已归档' in str(exc) else 409 if '父项目' in str(exc) else 400, str(exc))
         except ValueError:
             self._err(400, "invalid id")
         finally:
@@ -715,18 +705,19 @@ class Handler(BaseHTTPRequestHandler):
                 payload = clean_payload(self._read_body(), "project")
                 if not payload:
                     self._err(400, "no fields"); return
-                self._ok(services.update_project(conn, pid, payload))
+                self._ok(services.update(conn, "project", pid, payload))
             elif method == "DELETE" and len(parts) == 1:
                 pid = int(parts[0])
                 if self._is_archived_project(conn, pid):
                     self._err(403, "该年度项目已归档，禁止删除"); return
-                conn.execute("DELETE FROM project WHERE id=?", (pid,))
-                conn.commit()
+                services.soft_delete(conn, "project", pid, self._read_body().get("reason"))
                 self._ok({"deleted": pid})
+            elif method == "POST" and len(parts) == 2 and parts[1] == "restore":
+                self._ok(services.restore(conn, "project", int(parts[0]), self._read_body().get("reason")))
             else:
                 self._err(405, "method not allowed")
         except DomainError as exc:
-            self._err(400, str(exc))
+            self._err(403 if '已归档' in str(exc) else 409 if '父项目' in str(exc) else 400, str(exc))
         except ValueError:
             self._err(400, "invalid id")
         finally:
@@ -746,9 +737,9 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and not parts:
                 pid = qs.get("project_id", [None])[0]
                 if pid:
-                    rows = conn.execute(f"SELECT * FROM {table} WHERE project_id=? ORDER BY id", (int(pid),)).fetchall()
+                    rows = conn.execute(f"SELECT * FROM {table} WHERE project_id=? AND is_deleted=0 ORDER BY id", (int(pid),)).fetchall()
                 else:
-                    rows = conn.execute(f"SELECT * FROM {table} ORDER BY id").fetchall()
+                    rows = conn.execute(f"SELECT * FROM {table} WHERE is_deleted=0 ORDER BY id").fetchall()
                 self._ok([clean_row(r) for r in rows])
             elif method == "POST" and not parts:
                 payload = clean_payload(self._read_body(), table)
@@ -771,13 +762,14 @@ class Handler(BaseHTTPRequestHandler):
                 row = conn.execute(f"SELECT project_id FROM {table} WHERE id=?", (rid,)).fetchone()
                 if row and self._is_archived_project(conn, row["project_id"]):
                     self._err(403, "该项目已归档，禁止删除"); return
-                conn.execute(f"DELETE FROM {table} WHERE id=?", (rid,))
-                conn.commit()
+                services.soft_delete(conn, table, rid, self._read_body().get("reason"))
                 self._ok({"deleted": rid})
+            elif method == "POST" and len(parts) == 2 and parts[1] == "restore":
+                self._ok(services.restore(conn, table, int(parts[0]), self._read_body().get("reason")))
             else:
                 self._err(405, "method not allowed")
         except DomainError as exc:
-            self._err(400, str(exc))
+            self._err(403 if '已归档' in str(exc) else 409 if '父项目' in str(exc) else 400, str(exc))
         except ValueError:
             self._err(400, "invalid id")
         finally:
