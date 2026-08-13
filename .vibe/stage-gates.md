@@ -2,13 +2,15 @@
 
 ## Current phase
 
-**G0 基线治理进行中（2026-08-13 起）**：PLAN.md 已获确认，正在执行
-「确认后第一项实施任务」（G0-1 至 G0-4：Git 基线、tests/、失败复现测试、
-scripts/check.py）及 .vibe 治理同步。
+**G0 已完成（2026-08-13），下一授权阶段 G1，等待 HUMAN 三项决策**：
+PLAN.md 已获确认，「确认后第一项实施任务」（G0-1 至 G0-4：Git 基线、tests/、
+失败复现测试、scripts/check.py）及 .vibe 治理同步均已交付并通过验收
+（`python scripts/check.py` 全部通过、正式库哈希不变）。
 **注意：G1~G7 尚未开始，不得视为已完成。** 原「阶段 1–5」为历史演进记录，
-其中阶段 5（硬化）仅完成部分功能（备份/导入已实现），但未达到 PLAN 的
-可信台账标准（P0-01~P0-04 未修复），故 task-graph 中 phase-5-harden 为
-in_progress。
+phase-5-harden（备份/Excel 导入/错误处理）功能已实现，标记为 completed；
+其遗留缺陷（P0-01~P0-04，见 tests/test_regressions.py 6 项 xfail(strict=True)）
+按 PLAN 归属 G2/G3/G4 修复，须先经 G1 决策后授权，故 G1 保持 pending、
+不进入 G2。当前 task-graph 无 in_progress 任务。
 
 ## Entry evidence（阶段 1–2 起点）
 
@@ -35,7 +37,7 @@ in_progress。
 
 ## Blockers and open decisions
 
-- **已复现问题（P0-01 ~ P0-04，对应 tests/test_regressions.py 6 项 xfail）**：
+- **已复现问题（P0-01 ~ P0-04，对应 tests/test_regressions.py 6 项 xfail(strict=True)）**：
   - P0-01 资金口径分歧（dashboard 的 funded_total 只算『已到账』，项目列表
     的 funded_total 算全部资金，同一字段两种语义）；
   - P0-02 非法金额文本静默转 NULL、任意阶段可写入、无承担企业项目可写入；
@@ -49,6 +51,6 @@ in_progress。
 
 ## Next authorized phase
 
-G1（领域契约确认与迁移设计）。前置条件：G0 验收通过
-（`python scripts/check.py` 与 vibe 校验全部通过、正式库哈希不变）且
-HUMAN 确认 G1 三项决策。
+G1（领域契约确认与迁移设计）。G0 已验收通过（`python scripts/check.py` 与
+vibe 校验全部通过、正式库哈希不变）；当前等待 HUMAN 确认 G1 三项决策，
+确认后方可进入 G1 实施。

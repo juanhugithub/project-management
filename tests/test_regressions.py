@@ -33,7 +33,7 @@ from conftest import db_conn
 # ===========================================================================
 # P0-02 非法金额文本：clean_payload 用 float() 失败后静默置 None
 # ===========================================================================
-@pytest.mark.xfail(reason=(
+@pytest.mark.xfail(strict=True, reason=(
     "P0-02 非法金额文本被静默转 NULL：app.clean_payload 对金额字段 float() "
     "失败后赋 None 并照常写入。契约（PLAN §3.2/§2 P0-02）：非法金额必须 "
     "明确 400 且不写入，严禁把非法值静默转换为 NULL。"))
@@ -52,7 +52,7 @@ def test_p002_illegal_amount_text_rejected(client):
 # ===========================================================================
 # P0-02 非法项目阶段：POST /api/projects 只校验 name 必填，不校验 stage
 # ===========================================================================
-@pytest.mark.xfail(reason=(
+@pytest.mark.xfail(strict=True, reason=(
     "P0-02 任意阶段可写入：app._api_project POST 仅检查 name 必填，未校验 "
     "stage 是否属于状态机取值。契约（PLAN §3.2）：项目阶段只能按经确认的 "
     "状态机流转，非法取值必须 400。"))
@@ -71,7 +71,7 @@ def test_p002_illegal_stage_rejected(client):
 # ===========================================================================
 # P0-02 未关联企业项目：POST /api/projects 不要求 enterprise_id
 # ===========================================================================
-@pytest.mark.xfail(reason=(
+@pytest.mark.xfail(strict=True, reason=(
     "P0-02 无承担企业的项目可写入：app._api_project POST 不校验 "
     "enterprise_id 是否提供。契约（PLAN §3.2）：项目创建时必须指定存在且 "
     "未删除的承担企业，无企业项目必须 400。（对照：外键只拦截『不存在的 "
@@ -88,7 +88,7 @@ def test_p002_project_without_enterprise_rejected(client):
 # ===========================================================================
 # P0-03 归档年度仍可新建项目：PUT/DELETE 已拦，POST 新建未拦
 # ===========================================================================
-@pytest.mark.xfail(reason=(
+@pytest.mark.xfail(strict=True, reason=(
     "P0-03 归档年度仍可新建项目：app._api_project 的 PUT/DELETE 已调用 "
     "_is_archived_project 拦截，唯独 POST 新建路径不检查年度归档。契约"
     "（PLAN §3.3）：年度归档后禁止该年度项目的新建、修改、删除和导入，"
@@ -124,7 +124,7 @@ def test_p003_archived_year_blocks_new_project(client):
 # ===========================================================================
 # P0-01 资金口径分歧：同一字段名 funded_total 两处语义不同
 # ===========================================================================
-@pytest.mark.xfail(reason=(
+@pytest.mark.xfail(strict=True, reason=(
     "P0-01 资金口径分歧：app.py 中 dashboard.funded_total 只统计 status="
     "'已到账'（app.py:249），而项目列表 funded_total 统计该项目全部资金"
     "（app.py:696 无状态过滤），前端把后者显示为『已到位』（app.js:799）。"
@@ -187,7 +187,7 @@ def _build_partial_workbook():
     return wb
 
 
-@pytest.mark.xfail(reason=(
+@pytest.mark.xfail(strict=True, reason=(
     "P0-04 导入部分提交：import_excel.import_workbook 逐行 INSERT、仅对 "
     "非法行记 errors 后 continue，最后统一 commit —— 合法行已入库、非法行"
     "被跳过，形成『部分成功』。契约（PLAN §3.4/P0-04）：导入应先全量校验，"

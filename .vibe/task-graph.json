@@ -69,7 +69,63 @@
       "budget": {"time": "3h", "tokens": null},
       "failure_conditions": ["备份或导入数据不一致"],
       "escalation_conditions": ["导入格式需用户提供样例"],
-      "status": "in_progress"
+      "status": "completed"
+    },
+    {
+      "id": "g0-baseline-governance",
+      "objective": "G0 基线与治理（PLAN §4 G0）：Git 基线、失败复现测试、统一检查脚本、.vibe 治理同步，为后续每次改动提供可比较/可回滚/可证明的基线",
+      "inputs": ["PLAN.md", "设计方案.md", "app.py", "schema.sql", "tests/", "scripts/"],
+      "outputs": [
+        "Git 基线提交（不纳入 data/project.db、备份、导出与真实导入原件）",
+        "tests/test_regressions.py（独立临时库运行，6 项 xfail(strict=True) 失败复现，不改断言、不 skip）",
+        "scripts/check.py（语法/测试/SQLite 完整性/正式库 SHA-256 守卫/.vibe 校验一条命令）",
+        ".vibe/stage-gates.md 与 .vibe/task-graph.json 状态同步"
+      ],
+      "dependencies": ["phase-5-harden"],
+      "constraints": [
+        "不改业务逻辑、不迁移正式数据库",
+        "测试只在独立临时数据库运行，正式库 data/project.db 哈希不变",
+        "P0-01~P0-04 仅复现（xfail strict），不修复——修复归属 G2/G3/G4"
+      ],
+      "allowed_tools": ["python", "bash", "git", "file-edit", "node"],
+      "acceptance": [
+        "python scripts/check.py 全部通过",
+        "data/project.db SHA-256 测试运行前后一致",
+        "git 基线提交存在且工作区干净"
+      ],
+      "budget": {"time": "1h", "tokens": null},
+      "failure_conditions": ["正式库哈希被测试改动", "check.py 任一检查项失败且无法解释", "测试接触正式库"],
+      "escalation_conditions": ["需修复 P0-01~P0-04 属 G2/G3/G4 范围，须先完成 G1 决策后授权"],
+      "status": "completed"
+    },
+    {
+      "id": "g1-domain-contract",
+      "objective": "G1 领域契约确认与迁移设计（PLAN §4 G1）：确认不能猜测的业务语义（资金口径、项目唯一键、状态机），再设计版本化 SQLite 迁移，避免用代码替用户作财政规则决定",
+      "inputs": ["PLAN.md", "设计方案.md", ".vibe/domain-model.md", ".vibe/architecture.md", "data/project.db"],
+      "outputs": [
+        "设计方案.md 与 .vibe/domain-model.md、.vibe/architecture.md 的字段语义/状态规则更新",
+        "版本化迁移框架设计（迁移号、前置检查、事务、完成标记、失败回滚、迁移报告）",
+        "金额存储方案（推荐整数分）与 audit_log/软删除/导入批次/系统操作配置表结构设计",
+        "正式库只读预检报告（不合规记录、需人工修正项、不会自动修改的内容）"
+      ],
+      "dependencies": ["g0-baseline-governance"],
+      "constraints": [
+        "不写任何业务代码、不改正式库（预检只读）",
+        "HUMAN 三项决策未确认不得进入 G2",
+        "迁移方案必须含升级、失败回滚、降级不可用时的恢复方法"
+      ],
+      "allowed_tools": ["python", "bash", "file-edit", "git"],
+      "acceptance": [
+        "HUMAN 签字确认三项决策",
+        "迁移方案含升级/失败回滚/降级恢复方法",
+        "预检报告明确列出不合规记录、是否需人工修正、不会自动修改的内容"
+      ],
+      "budget": {"time": "2h", "tokens": null},
+      "failure_conditions": ["三项决策无法取得一致意见，或预检发现超出 G1 范围的数据问题"],
+      "escalation_conditions": [
+        "HUMAN 必须确认的三项决定（PLAN §4 G1）：① 单条资金记录是否同时表示计划与实际、是否拆分『资金计划/资金拨付』；② 项目业务唯一键是否采用『项目编号/文号 + 企业信用代码』、无编号历史项目如何治理；③ 项目状态机允许的正常流转、异常态进入条件、异常态是否可恢复。三项未确认前本任务保持 pending，不得进入 G2"
+      ],
+      "status": "pending"
     }
   ]
 }
