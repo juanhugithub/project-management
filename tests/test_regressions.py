@@ -33,12 +33,8 @@ from conftest import db_conn
 # ===========================================================================
 # P0-02 非法金额文本：clean_payload 用 float() 失败后静默置 None
 # ===========================================================================
-@pytest.mark.xfail(strict=True, reason=(
-    "P0-02 非法金额文本被静默转 NULL：app.clean_payload 对金额字段 float() "
-    "失败后赋 None 并照常写入。契约（PLAN §3.2/§2 P0-02）：非法金额必须 "
-    "明确 400 且不写入，严禁把非法值静默转换为 NULL。"))
 def test_p002_illegal_amount_text_rejected(client):
-    """非法金额文本『abc』应返回 400，当前被接受并写入 NULL。"""
+    """G2 回归：非法金额文本必须返回 400，且不得静默转为 NULL。"""
     _, ent = client.request(
         "POST", "/api/enterprises", {"name": "丙公司", "credit_code": "91320000TEST03"})
     status, proj = client.request(
@@ -52,12 +48,8 @@ def test_p002_illegal_amount_text_rejected(client):
 # ===========================================================================
 # P0-02 非法项目阶段：POST /api/projects 只校验 name 必填，不校验 stage
 # ===========================================================================
-@pytest.mark.xfail(strict=True, reason=(
-    "P0-02 任意阶段可写入：app._api_project POST 仅检查 name 必填，未校验 "
-    "stage 是否属于状态机取值。契约（PLAN §3.2）：项目阶段只能按经确认的 "
-    "状态机流转，非法取值必须 400。"))
 def test_p002_illegal_stage_rejected(client):
-    """阶段『随便写的阶段』应返回 400，当前被接受并写入。"""
+    """G2 回归：非法阶段值必须返回 400。"""
     _, ent = client.request(
         "POST", "/api/enterprises", {"name": "戊公司", "credit_code": "91320000TEST05"})
     status, proj = client.request(
@@ -71,13 +63,8 @@ def test_p002_illegal_stage_rejected(client):
 # ===========================================================================
 # P0-02 未关联企业项目：POST /api/projects 不要求 enterprise_id
 # ===========================================================================
-@pytest.mark.xfail(strict=True, reason=(
-    "P0-02 无承担企业的项目可写入：app._api_project POST 不校验 "
-    "enterprise_id 是否提供。契约（PLAN §3.2）：项目创建时必须指定存在且 "
-    "未删除的承担企业，无企业项目必须 400。（对照：外键只拦截『不存在的 "
-    "id』，拦截不了『id 为空』——见 test_baseline.test_foreign_key_rejects_*）"))
 def test_p002_project_without_enterprise_rejected(client):
-    """不带 enterprise_id 创建项目应返回 400，当前被接受并写入 NULL 关联。"""
+    """G2 回归：不带 enterprise_id 的项目必须返回 400。"""
     status, proj = client.request(
         "POST", "/api/projects", {"name": "无企业项目"})
     assert status == 400, (
