@@ -100,6 +100,23 @@ def test_g3_migration_runs_only_on_explicit_temporary_database(tmp_path):
         conn.close()
 
 
+def test_g3_migration_also_accepts_fresh_schema(tmp_path):
+    """全新库已含 G3 字段时，显式迁移入口不得因重复列失败。"""
+    from migrations import apply
+
+    db_path = tmp_path / "fresh_schema.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        schema = Path(PROJECT_ROOT, "schema.sql").read_text(encoding="utf-8")
+        conn.executescript(schema)
+        apply(conn)
+        assert conn.execute(
+            "SELECT version FROM schema_migration WHERE version='002_g3_soft_delete_audit.sql'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+
 def test_archived_year_blocks_project_funding_and_node_all_mutations(client):
     """归档 2024 后，三类对象的 POST/PUT/DELETE 必须全部返回 403。"""
     enterprise = _new_enterprise(client)
