@@ -109,12 +109,29 @@ class SimpleClient:
 
     def __init__(self, port):
         self.port = port
+        # 既有 G0-G5 回归测试描述的是业务规则而非匿名访问，因此统一以管理员会话
+        # 调用，避免登录门禁掩盖原有领域断言。G6 的匿名断言使用独立原生 HTTP
+        # 辅助函数，不经过本客户端，仍会真实得到 401。
+        self._cookie = self._login_as_admin()
+
+    def _login_as_admin(self):
+        """启动夹具时建立一次管理员会话，并将 Cookie 自动附加到旧测试请求。"""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        try:
+            body = json.dumps({"username": "g6-admin", "password": "g6-admin-password"}).encode("utf-8")
+            conn.request("POST", "/api/auth/login", body=body, headers={"Content-Type": "application/json"})
+            response = conn.getresponse()
+            response.read()
+            assert response.status == 200, "测试管理员登录失败"
+            return response.getheader("Set-Cookie").split(";", 1)[0]
+        finally:
+            conn.close()
 
     def request(self, method, path, body=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         try:
             data = None
-            headers = {}
+            headers = {"Cookie": self._cookie}
             if body is not None:
                 data = json.dumps(body, ensure_ascii=False).encode("utf-8")
                 headers["Content-Type"] = "application/json"

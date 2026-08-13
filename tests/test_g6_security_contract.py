@@ -72,7 +72,6 @@ def _create_project(client, headers, *, number, district):
     return project
 
 
-@pytest.mark.xfail(strict=True, reason="G6 尚未实现登录与会话认证")
 def test_g6_unauthenticated_requests_are_rejected_before_read_or_write(client):
     """未登录者不能读取项目/统计，也不能修改归档或发起导入。"""
     attempts = [
@@ -86,7 +85,6 @@ def test_g6_unauthenticated_requests_are_rejected_before_read_or_write(client):
         assert status == 401, f"未登录请求未被 401 拒绝: {method} {path}, body={response}"
 
 
-@pytest.mark.xfail(strict=True, reason="G6 尚未实现角色权限")
 def test_g6_roles_reject_viewer_and_editor_sensitive_operations(client):
     """查阅员只读；编辑员不能导入、归档、解除归档或恢复删除数据。"""
     viewer = _login(client, "g6-viewer", "g6-viewer-password")
@@ -104,7 +102,6 @@ def test_g6_roles_reject_viewer_and_editor_sensitive_operations(client):
         assert status == 403, f"editor 被允许执行敏感操作 {path}: {response}"
 
 
-@pytest.mark.xfail(strict=True, reason="G6 尚未将会话操作者写入审计日志")
 def test_g6_audit_uses_authenticated_operator_instead_of_fixed_local_user(tmp_db, client):
     """每个写操作的审计 operator 必须等于已认证用户，而不是固定占位标识。"""
     admin = _login(client, "g6-admin", "g6-admin-password")
@@ -120,7 +117,6 @@ def test_g6_audit_uses_authenticated_operator_instead_of_fixed_local_user(tmp_db
     assert row["operator"] != "local-user", "审计仍使用固定 local-user 占位符"
 
 
-@pytest.mark.xfail(strict=True, reason="G6 尚未实现按区镇的数据范围授权")
 def test_g6_project_list_and_statistics_only_return_authorized_district_scope(client):
     """区镇查阅员只能看到授权区镇的项目，统计金额与数量也不得汇入越权项目。"""
     admin = _login(client, "g6-admin", "g6-admin-password")
@@ -136,4 +132,3 @@ def test_g6_project_list_and_statistics_only_return_authorized_district_scope(cl
     status, statistics, _ = _request_with_headers(client, "GET", "/api/statistics?by=district", headers=reader)
     assert status == 200
     assert {item["key"] for item in statistics} == {"开发区"}, "统计结果包含未授权区镇"
-

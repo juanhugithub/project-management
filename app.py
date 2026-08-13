@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from ledger.errors import DomainError
 from ledger import queries, services
+from ledger import security
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "project.db")
@@ -120,11 +121,13 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return {}
 
-    def _send(self, status, obj):
+    def _send(self, status, obj, headers=None):
         data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(data)
 
@@ -133,6 +136,33 @@ class Handler(BaseHTTPRequestHandler):
 
     def _err(self, status, message):
         self._send(status, {"error": message})
+
+    def _request_user(self):
+        """从 HttpOnly 会话 Cookie 提取当前用户，API 不接受客户端伪造身份字段。"""
+        raw_cookie = self.headers.get("Cookie", "")
+        for item in raw_cookie.split(";"):
+            key, sep, value = item.strip().partition("=")
+            if key == "ledger_session" and sep:
+                return security.user_for_token(value)
+        return None
+
+    def _require_role(self, *roles):
+        """统一角色门禁：未登录 401，已登录但越权 403。"""
+        if not self.current_user:
+            self._err(401, "请先登录")
+            return False
+        if self.current_user["role"] not in roles:
+            self._err(403, "当前角色无此操作权限")
+            return False
+        return True
+
+    def _is_sensitive_action(self, resource, method, parts):
+        """归档、恢复、导入是高影响操作，仅管理员可执行。"""
+        return (
+            resource == "config" and method == "PUT"
+            or resource == "import" and method == "POST"
+            or method == "POST" and len(parts) > 1 and parts[-1] == "restore"
+        )
 
     # ---------- 路由 ----------
     def do_GET(self):
@@ -196,34 +226,67 @@ class Handler(BaseHTTPRequestHandler):
             return
         resource = parts[0]
 
+        # 登录是唯一不需要既有会话的 API，其余读写一律先做身份认证。
+        if resource == "auth":
+            self._api_auth(method, parts[1:])
+            return
+        self.current_user = self._request_user()
+        if not self.current_user:
+            self._err(401, "请先登录")
+            return
+        if self._is_sensitive_action(resource, method, parts[1:]) and not self._require_role("admin"):
+            return
+        # 查阅员绝不写入；编辑员可做日常台账维护，但不能越过上面的敏感操作门禁。
+        if method in ("POST", "PUT", "DELETE") and not self._require_role("admin", "editor"):
+            return
+        operator_token = security.set_current_operator(self.current_user["username"])
+        try:
+            self._dispatch_api(method, resource, parts[1:], qs)
+        finally:
+            security.reset_current_operator(operator_token)
+
+    def _dispatch_api(self, method, resource, parts, qs):
+
         if resource == "dict":
-            self._api_dict(method, parts[1:], qs)
+            self._api_dict(method, parts, qs)
         elif resource == "enterprises":
-            self._api_enterprise(method, parts[1:], qs)
+            self._api_enterprise(method, parts, qs)
         elif resource == "projects":
-            self._api_project(method, parts[1:], qs)
+            self._api_project(method, parts, qs)
         elif resource == "fundings":
-            self._api_funding(method, parts[1:], qs)
+            self._api_funding(method, parts, qs)
         elif resource == "nodes":
-            self._api_node(method, parts[1:], qs)
+            self._api_node(method, parts, qs)
         elif resource == "reminders":
-            self._api_reminders(method, parts[1:], qs)
-        elif resource == "stats":
-            self._api_stats(method, parts[1:], qs)
+            self._api_reminders(method, parts, qs)
+        elif resource in ("stats", "statistics"):
+            self._api_stats(method, parts, qs)
         elif resource == "funding-check":
-            self._api_funding_check(method, parts[1:], qs)
+            self._api_funding_check(method, parts, qs)
         elif resource == "import":
-            self._api_import(method, parts[1:], qs)
+            self._api_import(method, parts, qs)
         elif resource == "template":
-            self._api_template(method, parts[1:], qs)
+            self._api_template(method, parts, qs)
         elif resource == "dashboard":
-            self._api_dashboard(method, parts[1:], qs)
+            self._api_dashboard(method, parts, qs)
         elif resource == "funding-plan":
-            self._api_funding_plan(method, parts[1:], qs)
+            self._api_funding_plan(method, parts, qs)
         elif resource == "config":
-            self._api_config(method, parts[1:], qs)
+            self._api_config(method, parts, qs)
         else:
             self._err(404, "unknown resource")
+
+    def _api_auth(self, method, parts):
+        """最小本地登录：成功后仅以 HttpOnly Cookie 建立会话。"""
+        if method != "POST" or parts != ["login"]:
+            self._err(405, "method not allowed")
+            return
+        body = self._read_body()
+        token, user = security.login(body.get("username"), body.get("password"))
+        if not token:
+            self._err(401, "用户名或密码错误")
+            return
+        self._send(200, {"user": user}, {"Set-Cookie": f"ledger_session={token}; HttpOnly; SameSite=Strict; Path=/"})
 
     # ---------- 归档工具 ----------
     def _archived_years(self, conn):
@@ -523,10 +586,23 @@ class Handler(BaseHTTPRequestHandler):
         by = qs.get("by", ["category"])[0]
         conn = get_db()
         try:
-            if by == "source":
+            scope = self.current_user.get("district_scope")
+            scope_sql = " AND e.district=?" if scope else ""
+            scope_params = (scope,) if scope else ()
+            if by == "district":
+                rows = conn.execute(
+                    "SELECT COALESCE(e.district,'未设置') AS key, COUNT(p.id) AS count, "
+                    "COALESCE(SUM(p.total_amount),0) AS amount "
+                    "FROM project p JOIN enterprise e ON p.enterprise_id=e.id "
+                    "WHERE p.is_deleted=0 AND e.is_deleted=0" + scope_sql + " GROUP BY e.district ORDER BY count DESC",
+                    scope_params,
+                ).fetchall()
+            elif by == "source":
                 rows = conn.execute(
                     "SELECT f.source_type AS key, COUNT(*) AS count, COALESCE(SUM(f.amount),0) AS amount "
-                    "FROM funding f GROUP BY f.source_type ORDER BY amount DESC").fetchall()
+                    "FROM funding f JOIN project p ON f.project_id=p.id JOIN enterprise e ON p.enterprise_id=e.id "
+                    "WHERE f.is_deleted=0 AND p.is_deleted=0 AND e.is_deleted=0" + scope_sql + " GROUP BY f.source_type ORDER BY amount DESC",
+                    scope_params).fetchall()
             elif by == "enterprise":
                 rows = conn.execute(
                     "SELECT COALESCE(e.name,'未关联') AS key, COUNT(p.id) AS count, "
@@ -700,10 +776,14 @@ class Handler(BaseHTTPRequestHandler):
                                 params.append(built[1])
                     except (ValueError, TypeError):
                         pass
+                requested_district = qs.get("district", [None])[0]
+                scoped_district = self.current_user.get("district_scope")
+                if scoped_district and requested_district and requested_district != scoped_district:
+                    self._ok([]); return
                 self._ok(queries.project_list(conn, {
                     "level": qs.get("level", [None])[0], "category": qs.get("category", [None])[0],
                     "stage": qs.get("stage", [None])[0], "enterprise_id": qs.get("enterprise_id", [None])[0],
-                    "district": qs.get("district", [None])[0], "query": qs.get("q", [None])[0]}))
+                    "district": scoped_district or requested_district, "query": qs.get("q", [None])[0]}))
             elif method == "GET" and len(parts) == 1:
                 pid = int(parts[0])
                 result = queries.project_detail(conn, pid)

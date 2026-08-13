@@ -4,6 +4,7 @@ import sqlite3
 
 from .errors import DomainError
 from .validation import validate_dicts, validate_funding, validate_project, date
+from .security import current_operator
 
 
 def _summary(row):
@@ -15,8 +16,8 @@ def _audit(conn, action, object_type, object_id, before=None, after=None, reason
     """在同一事务写入本地单人台账审计，避免业务成功但审计缺失。"""
     conn.execute(
         "INSERT INTO audit_log(ts,operator,action,object_type,object_id,before_summary,after_summary,reason) "
-        "VALUES(datetime('now','localtime'),'local-user',?,?,?,?,?,?)",
-        (action, object_type, object_id, _summary(before), _summary(after), reason),
+        "VALUES(datetime('now','localtime'),?,?,?,?,?,?,?)",
+        (current_operator(), action, object_type, object_id, _summary(before), _summary(after), reason),
     )
 
 
