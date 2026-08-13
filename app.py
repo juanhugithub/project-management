@@ -112,14 +112,19 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------- 基础工具 ----------
     def _read_body(self):
+        """每个请求只读取一次请求体，使鉴权拒绝后的连接也能正常收尾。"""
+        if hasattr(self, "_parsed_request_body"):
+            return self._parsed_request_body
         length = int(self.headers.get("Content-Length", 0))
         if not length:
-            return {}
+            self._parsed_request_body = {}
+            return self._parsed_request_body
         raw = self.rfile.read(length)
         try:
-            return json.loads(raw.decode("utf-8"))
+            self._parsed_request_body = json.loads(raw.decode("utf-8"))
         except Exception:
-            return {}
+            self._parsed_request_body = {}
+        return self._parsed_request_body
 
     def _send(self, status, obj, headers=None):
         data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -221,6 +226,10 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------- API 分发 ----------
     def _api(self, method, parts, qs):
+        # 必须先消费写请求体：若鉴权直接返回 401/403 而残留请求体，Windows 关闭
+        # 套接字时会发送 RST，客户端便可能在已记录 403 后仍收到 ConnectionAbortedError。
+        if method in ("POST", "PUT", "DELETE"):
+            self._read_body()
         if not parts:
             self._err(404, "no api resource")
             return
