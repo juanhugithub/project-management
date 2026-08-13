@@ -58,7 +58,6 @@ def _counts(tmp_db):
         conn.close()
 
 
-@pytest.mark.xfail(strict=True, reason="G4 尚未实现解析→暂存预览→HUMAN 确认→单事务提交的受控导入工作流。")
 def test_parse_and_stage_produces_deterministic_preview_without_formal_writes(tmp_db, tmp_path):
     """解析后的每行先进入暂存，确认前不得创建企业或项目。"""
     workflow = _workflow(tmp_db, tmp_path)
@@ -72,7 +71,6 @@ def test_parse_and_stage_produces_deterministic_preview_without_formal_writes(tm
     assert _counts(tmp_db) == before, "暂存预览阶段向 enterprise/project 正式表写入"
 
 
-@pytest.mark.xfail(strict=True, reason="G4 尚未实现阻断行在 HUMAN 确认前拒绝提交且零正式写入。")
 def test_blocking_row_cannot_be_confirmed_and_leaves_zero_formal_writes(tmp_db, tmp_path):
     """存在字段错误、缺失身份或归档冲突时，确认请求必须被拒绝。"""
     workflow = _workflow(tmp_db, tmp_path)
@@ -87,7 +85,6 @@ def test_blocking_row_cannot_be_confirmed_and_leaves_zero_formal_writes(tmp_db, 
     assert _counts(tmp_db) == before, "有阻断行仍在确认提交前写入正式表"
 
 
-@pytest.mark.xfail(strict=True, reason="G4 尚未将统一社会信用代码作为企业导入身份，旧导入仍按名称缓存。")
 def test_enterprise_identity_is_credit_code_never_automatic_name_merge(tmp_db, tmp_path):
     """同名不同码不可自动合并；缺码同名行只能待 HUMAN 显式处置。"""
     workflow = _workflow(tmp_db, tmp_path)
@@ -102,7 +99,6 @@ def test_enterprise_identity_is_credit_code_never_automatic_name_merge(tmp_db, t
     assert _counts(tmp_db) == {"enterprise": 0, "project": 0}
 
 
-@pytest.mark.xfail(strict=True, reason="G4 尚未实现项目编号加企业信用代码的精确重复检测与无编号待确认队列。")
 def test_duplicate_key_detected_and_missing_project_number_never_auto_posted(tmp_db, tmp_path):
     """同一业务键为重复；无项目编号仅暂存为 missing_identity，不能自动入账。"""
     workflow = _workflow(tmp_db, tmp_path)
@@ -115,7 +111,6 @@ def test_duplicate_key_detected_and_missing_project_number_never_auto_posted(tmp
     assert _counts(tmp_db)["project"] == 1
 
 
-@pytest.mark.xfail(strict=True, reason="G4 尚未保证确认提交的单事务回滚；提交故障不得遗留孤儿企业。")
 def test_confirm_failure_rolls_back_entire_batch_without_orphan_enterprise(tmp_db, tmp_path):
     """项目插入故障发生在企业插入之后时，整个批次必须回滚。"""
     workflow = _workflow(tmp_db, tmp_path)
@@ -132,7 +127,6 @@ def test_confirm_failure_rolls_back_entire_batch_without_orphan_enterprise(tmp_d
     assert _counts(tmp_db) == {"enterprise": 0, "project": 0}, "提交失败遗留企业或半条项目"
 
 
-@pytest.mark.xfail(strict=True, reason="G4 尚未实现 import_batch/import_staging、文件 SHA-256 与来源批次审计追溯。")
 def test_import_batch_persists_sha_metadata_staging_and_commit_audit(tmp_db, tmp_path):
     """批次必须保存文件 SHA、映射版本、暂存行及带 source_batch 的确认审计。"""
     workflow = _workflow(tmp_db, tmp_path)

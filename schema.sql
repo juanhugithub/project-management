@@ -152,6 +152,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_ts     ON audit_log(ts);
 CREATE INDEX IF NOT EXISTS idx_audit_object ON audit_log(object_type, object_id);
 
+-- 7. G4 受控导入：原件身份、暂存行与确认状态均留在台账内，正式业务表只在确认时写入。
+CREATE TABLE IF NOT EXISTS import_batch (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_name         TEXT NOT NULL,
+    file_sha256       TEXT NOT NULL,
+    field_map_version TEXT NOT NULL,
+    archive_path      TEXT NOT NULL,
+    status            TEXT NOT NULL CHECK(status IN ('staged','committed','failed')),
+    created_at        TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    committed_at      TEXT
+);
+CREATE TABLE IF NOT EXISTS import_staging (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id    INTEGER NOT NULL REFERENCES import_batch(id) ON DELETE CASCADE,
+    row_no      INTEGER NOT NULL,
+    raw_json    TEXT NOT NULL,
+    conclusion  TEXT NOT NULL,
+    error       TEXT,
+    UNIQUE(batch_id, row_no)
+);
+CREATE INDEX IF NOT EXISTS idx_import_staging_batch ON import_staging(batch_id, row_no);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_project_enterprise ON project(enterprise_id);
 CREATE INDEX IF NOT EXISTS idx_funding_project    ON funding(project_id);

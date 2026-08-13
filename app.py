@@ -364,7 +364,25 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------- Excel 导入 ----------
     def _api_import(self, method, parts, qs):
-        if method != "POST":
+        if method == "GET" and len(parts) == 1:
+            from imports.controlled import ImportWorkflow
+            try:
+                workflow = ImportWorkflow(DB_PATH, os.path.join(BASE_DIR, "imports", "archive"), apply_schema=False)
+                self._ok(workflow.preview(int(parts[0])))
+            except (DomainError, ValueError, sqlite3.Error) as exc:
+                self._err(400, str(exc))
+            return
+        if method == "POST" and len(parts) == 2 and parts[1] == "confirm":
+            from imports.controlled import ImportWorkflow
+            try:
+                workflow = ImportWorkflow(DB_PATH, os.path.join(BASE_DIR, "imports", "archive"), apply_schema=False)
+                self._ok(workflow.confirm(int(parts[0])))
+            except DomainError as exc:
+                self._err(409, str(exc))
+            except (ValueError, sqlite3.Error) as exc:
+                self._err(400, str(exc))
+            return
+        if method != "POST" or parts:
             self._err(405, "method not allowed"); return
         try:
             import base64
@@ -383,17 +401,16 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._err(400, f"Excel 解析失败: {e}"); return
         try:
-            from import_excel import import_workbook
+            from import_excel import normalized_rows
+            from imports.controlled import ImportWorkflow
         except ImportError:
             self._err(500, "缺少 import_excel.py"); return
-        conn = get_db()
         try:
-            result = import_workbook(wb, conn)
-        except Exception as e:
-            conn.rollback()
-            self._err(500, f"导入失败: {e}"); return
-        finally:
-            conn.close()
+            workflow = ImportWorkflow(DB_PATH, os.path.join(BASE_DIR, "imports", "archive"), apply_schema=False)
+            result = workflow.parse_and_stage(body.get("name") or "upload.xlsx", raw, normalized_rows(wb), "excel-v1")
+            result["preview"] = workflow.preview(result["id"])
+        except (DomainError, sqlite3.Error) as e:
+            self._err(400, f"导入暂存失败: {e}"); return
         self._ok(result)
 
     # ---------- 字典 ----------

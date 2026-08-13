@@ -99,6 +99,41 @@ def _pick_sheet(wb):
     return None
 
 
+def normalized_rows(wb):
+    """把 Excel 解析为 G4 标准行；本函数只解析，不写任何数据库。"""
+    sheet = _pick_sheet(wb)
+    if sheet is None:
+        return []
+    rows_iter = sheet.iter_rows(values_only=True)
+    try:
+        header = [str(h).strip() if h is not None else "" for h in next(rows_iter)]
+    except StopIteration:
+        return []
+    index = {name: position for position, name in enumerate(header) if name}
+
+    def cell(row, name):
+        position = index.get(name)
+        return row[position] if position is not None and position < len(row) else None
+
+    parsed = []
+    for row in rows_iter:
+        parsed.append({
+            "enterprise_name": clean_str(cell(row, "企业名称")),
+            "credit_code": clean_str(cell(row, "统一社会信用代码")),
+            "enterprise_type": clean_str(cell(row, "企业类型")),
+            "district": clean_str(cell(row, "区镇")),
+            "project_name": clean_str(cell(row, "项目名称")),
+            "project_no": clean_str(cell(row, "项目编号/文号")),
+            "level": clean_str(cell(row, "层级")),
+            "category": clean_str(cell(row, "类型")),
+            "total_amount": parse_number(cell(row, "总金额（万元）")),
+            "start_date": parse_date(cell(row, "开始日期")),
+            "end_date": parse_date(cell(row, "结束日期")),
+            "stage": clean_str(cell(row, "当前阶段")),
+        })
+    return parsed
+
+
 def import_workbook(wb, conn, dict_map=None):
     """核心导入：单表自动拆分。dict_map: {dict_type: {value: True}}。返回结果 dict。"""
     if dict_map is None:

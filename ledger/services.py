@@ -41,7 +41,7 @@ def _require_mutable_project(conn, project):
         raise DomainError('该年度项目已归档，禁止写入')
 
 
-def create(conn, table, payload):
+def create(conn, table, payload, commit=True):
     if table == 'project':
         start_date = payload.get('start_date')
         if start_date and start_date[:4] in archived_years(conn):
@@ -69,7 +69,8 @@ def create(conn, table, payload):
         raise DomainError(str(exc))
     row = conn.execute(f"SELECT * FROM {table} WHERE id=?", (cur.lastrowid,)).fetchone()
     _audit(conn, 'create', table, cur.lastrowid, after=row)
-    conn.commit()
+    if commit:
+        conn.commit()
     return dict(row)
 
 
