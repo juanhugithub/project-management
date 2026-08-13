@@ -2,15 +2,15 @@
 
 ## Current phase
 
-**G1 已完成（2026-08-13），下一授权阶段为 G2（pending）**：
+**G0–G6 已完成开发验收（2026-08-13），下一阶段为 G7（试运行与交付）**：
 PLAN.md 已获确认，「确认后第一项实施任务」（G0-1 至 G0-4：Git 基线、tests/、
 失败复现测试、scripts/check.py）及 .vibe 治理同步均已交付并通过验收
 （`python scripts/check.py` 全部通过、正式库哈希不变）。
-**注意：仅 G1 已完成；G2~G7 尚未开始，不得视为已完成。** 原「阶段 1–5」为历史演进记录，
+**注意：G2 核心约束、G3 归档审计、G4 受控导入、G5 可恢复备份、G6 本地会话与权限已完成临时库验收；G7 尚未开始。** 原「阶段 1–5」为历史演进记录，
 phase-5-harden（备份/Excel 导入/错误处理）功能已实现，标记为 completed；
 其遗留缺陷（P0-01~P0-04，见 tests/test_regressions.py 6 项 xfail(strict=True)）
-按 PLAN 归属 G2/G3/G4 修复。G1 决策、迁移设计和正式库只读预检已经验收；G2
-仍保持 pending，尚未授权实施。当前 task-graph 无 in_progress 任务。
+按 PLAN 归属 G2/G3/G4 修复。G1 决策、迁移设计和正式库只读预检已经验收；G2–G6
+均已通过独立临时库验收。正式库仍未经授权迁移。当前 task-graph 无 in_progress 任务。
 
 ## Entry evidence（阶段 1–2 起点）
 
@@ -51,5 +51,5 @@ phase-5-harden（备份/Excel 导入/错误处理）功能已实现，标记为 
 
 ## Next authorized phase
 
-G2（核心写入约束与统一查询层）。进入前必须遵守 G1 契约与迁移协议；正式库迁移
-仍需先完成副本演练并取得 HUMAN 授权。
+G7（MCP 一致性、回归、试运行与交付）。进入前须先由 HUMAN 授权在正式库副本演练并决定
+是否迁移；G6 专用登录页、角色提示和视觉验收也在本阶段完成。

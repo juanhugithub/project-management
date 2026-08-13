@@ -139,7 +139,7 @@
       "budget": {"time": "3h", "tokens": null},
       "failure_conditions": ["正式库未经授权迁移", "资金口径或状态机与 G1 契约不一致"],
       "escalation_conditions": ["迁移预检出现非零违规或需处理历史数据"],
-      "status": "pending"
+      "status": "completed"
     }
   ]
 }
