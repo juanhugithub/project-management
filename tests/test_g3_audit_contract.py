@@ -108,7 +108,7 @@ def test_g3_migration_also_accepts_fresh_schema(tmp_path):
     db_path = tmp_path / "fresh_schema.db"
     conn = sqlite3.connect(db_path)
     try:
-        schema = Path(PROJECT_ROOT, "schema.sql").read_text(encoding="utf-8")
+        schema = Path(__file__).resolve().parents[1].joinpath("schema.sql").read_text(encoding="utf-8")
         conn.executescript(schema)
         apply(conn)
         assert conn.execute(
