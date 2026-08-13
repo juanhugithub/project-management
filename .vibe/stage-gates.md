@@ -2,15 +2,15 @@
 
 ## Current phase
 
-**G0 已完成（2026-08-13），下一授权阶段 G1，等待 HUMAN 三项决策**：
+**G1 已完成（2026-08-13），下一授权阶段为 G2（pending）**：
 PLAN.md 已获确认，「确认后第一项实施任务」（G0-1 至 G0-4：Git 基线、tests/、
 失败复现测试、scripts/check.py）及 .vibe 治理同步均已交付并通过验收
 （`python scripts/check.py` 全部通过、正式库哈希不变）。
-**注意：G1~G7 尚未开始，不得视为已完成。** 原「阶段 1–5」为历史演进记录，
+**注意：仅 G1 已完成；G2~G7 尚未开始，不得视为已完成。** 原「阶段 1–5」为历史演进记录，
 phase-5-harden（备份/Excel 导入/错误处理）功能已实现，标记为 completed；
 其遗留缺陷（P0-01~P0-04，见 tests/test_regressions.py 6 项 xfail(strict=True)）
-按 PLAN 归属 G2/G3/G4 修复，须先经 G1 决策后授权，故 G1 保持 pending、
-不进入 G2。当前 task-graph 无 in_progress 任务。
+按 PLAN 归属 G2/G3/G4 修复。G1 决策、迁移设计和正式库只读预检已经验收；G2
+仍保持 pending，尚未授权实施。当前 task-graph 无 in_progress 任务。
 
 ## Entry evidence（阶段 1–2 起点）
 
@@ -46,11 +46,10 @@ phase-5-harden（备份/Excel 导入/错误处理）功能已实现，标记为 
   上述问题按 PLAN 归属 G2/G3/G4 修复，本轮（G0）只复现、不修复。
 - 待用户确认：各字典初始种子值是否够用（可自助增补，不阻塞）。
 - 待用户确认：附件/文档关联能力是否纳入（暂不含，不阻塞）。
-- G1 起需 HUMAN 确认的三项决策：资金记录是否拆分计划/实际、项目业务唯一键、
-  状态机流转规则（PLAN §4 G1）。
+- G1 决策已确认，见 `docs/decisions/0001-g1-domain-contract.md`；撤销授权细则为
+  未来不阻塞待定事项。
 
 ## Next authorized phase
 
-G1（领域契约确认与迁移设计）。G0 已验收通过（`python scripts/check.py` 与
-vibe 校验全部通过、正式库哈希不变）；当前等待 HUMAN 确认 G1 三项决策，
-确认后方可进入 G1 实施。
+G2（核心写入约束与统一查询层）。进入前必须遵守 G1 契约与迁移协议；正式库迁移
+仍需先完成副本演练并取得 HUMAN 授权。

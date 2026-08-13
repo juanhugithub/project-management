@@ -125,6 +125,20 @@
       "escalation_conditions": [
         "HUMAN 必须确认的三项决定（PLAN §4 G1）：① 单条资金记录是否同时表示计划与实际、是否拆分『资金计划/资金拨付』；② 项目业务唯一键是否采用『项目编号/文号 + 企业信用代码』、无编号历史项目如何治理；③ 项目状态机允许的正常流转、异常态进入条件、异常态是否可恢复。三项未确认前本任务保持 pending，不得进入 G2"
       ],
+      "status": "completed"
+    },
+    {
+      "id": "g2-core-write-constraints",
+      "objective": "G2 核心写入约束与统一查询层（PLAN §4 G2）：落实 G1 已确认契约，禁止非法状态进入数据库并统一资金口径",
+      "inputs": ["docs/decisions/0001-g1-domain-contract.md", "docs/migrations/README.md", ".vibe/evidence/g1-preflight-check.py"],
+      "outputs": ["ledger/", "受控迁移实现", "G2 契约测试"],
+      "dependencies": ["g1-domain-contract"],
+      "constraints": ["正式库迁移前先在副本演练并获 HUMAN 授权", "不猜测或自动修正预检数据", "所有写入口遵守 G1 状态机和唯一键"],
+      "allowed_tools": ["python", "bash", "file-edit", "git", "node"],
+      "acceptance": ["API、导入、直接 SQLite 三条路径均不能突破不变量", "同一样本在页面、统计、CSV、MCP 的资金口径一致"],
+      "budget": {"time": "3h", "tokens": null},
+      "failure_conditions": ["正式库未经授权迁移", "资金口径或状态机与 G1 契约不一致"],
+      "escalation_conditions": ["迁移预检出现非零违规或需处理历史数据"],
       "status": "pending"
     }
   ]

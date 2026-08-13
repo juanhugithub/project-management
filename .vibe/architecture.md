@@ -10,7 +10,8 @@
 
 | 组件 | 职责 |
 |---|---|
-| `schema.sql` | 5 张表定义 + 31 条种子数据（唯一事实源） |
+| `schema.sql` | 基线 5 张表定义 + 31 条种子数据；G2 起仅能经版本化迁移改变结构 |
+| `docs/migrations/` | 迁移号、前置预检、事务、完成标记、回滚和恢复的实施契约 |
 | `app.py` | 标准库后端：静态文件 + JSON API（企业/项目/资金/节点/字典 CRUD） |
 | `static/` | 前端 SPA（原生 HTML/JS/CSS，无框架无 CDN） |
 | `start.bat` | 双击启动入口（检查 Python → 运行 app.py） |
@@ -29,6 +30,13 @@
 - Python 后端与数据层零第三方依赖（Python 标准库 + SQLite）。
 - 本轮（G0）明确**不进行任何技术栈替换**：不引入 Flask/Django/React/Vue、
   不引入 ORM、不更换数据库引擎（详见 reuse-survey.md）。
+
+## G1 迁移边界
+
+迁移先在副本演练，正式库仅在 HUMAN 授权后按连续编号升级；`user_version` 与
+`schema_migration` 完成标记必须在同一事务提交。失败一律回滚；已提交的 SQLite
+结构变更不承诺通用降级，恢复只能使用迁移前已验证备份并由 HUMAN 决定替换。完整
+协议见 `../docs/migrations/README.md`，已确认领域契约见 `../docs/decisions/0001-g1-domain-contract.md`。
 
 ## Data flow and interfaces
 

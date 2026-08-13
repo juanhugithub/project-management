@@ -16,19 +16,20 @@
 enterprise 1 ──承担── N project 1 ──包含── N funding / N node
 ```
 
-- project 删除 → funding/node 级联删除（CASCADE）
-- enterprise 删除 → project.enterprise_id 置空（SET NULL）
+- G3 起删除采用软删除；在此之前不得以删除企业制造无承担企业项目。
 
 ## Invariants
 
 - funding/node 必须挂在一个 project 下
-- project 应有承担企业（可允许未关联，但设计上以有为准）
-- stage 只能按状态机流转：申报中→已立项→实施中→待验收→已验收→绩效跟踪→已完结（+异常态 中止/撤销）
+- project 必须关联存在且未删除的承担企业；企业信用代码是企业业务身份。
+- 项目业务唯一键是“项目编号/文号 + 企业信用代码”；编号非空时以 `(project_no, enterprise_id)` 实现等价唯一约束，无编号记录不得自动入账。
+- funding 是不拆分的单记录：amount 为计划/批准金额，plan_date 为应拨日期，actual_date 为实际拨付日期，status 为拨付/到账状态。
+- stage 正常链只能相邻前进：申报中→已立项→实施中→待验收→已验收→绩效跟踪→已完结；中止仅从已立项/实施中/待验收进入且不可恢复；撤销只能人工显式进入且不可恢复。
 - source_type 只能取 dict_item.funding_source 定义值
 
 ## Operations and state transitions
 
-- 生命周期状态机见上；节点 plan_date/actual_date 决定提醒（阶段3）
+- 正常状态不得回退或跳跃；已完结、中止、撤销均无出边。撤销的授权条件由未来 HUMAN 决定，不阻塞本契约。
 - 资金勾稽：应到位 ≈ Σ上级 + Σ配套 + Σ自付；本级配套 = 上级拨付 × match_ratio（阶段3核对）
 
 ## Mechanisms and content
@@ -46,7 +47,7 @@ enterprise 1 ──承担── N project 1 ──包含── N funding / N nod
 
 - 资金/节点无 project_id
 - stage 非法取值（不在状态机）
-- 枚举字段取值不在 dict_item（允许历史遗留，但下拉框不出现）
+- 枚举字段取值不在 dict_item
 - 金额为负
 
 ## Intermediate representation
