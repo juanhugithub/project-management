@@ -12,7 +12,8 @@
   企业字段(绿)：企业名称*, 统一社会信用代码, 企业类型, 区镇, 资质, 企业联系人, 企业联系电话, 企业地址
   项目字段(蓝)：项目名称*, 项目编号/文号, 层级, 类型, 总金额（万元）, 开始日期, 结束日期,
                 当前阶段, 配套比例, 项目负责人, 联系人手机号, 备注
-返回：{"enterprise": {"ok": n, "errors": [...]}, "project": {"ok": n, "errors": [...]}}
+旧的直写函数已废弃；页面导入使用 G4 受控导入工作流，必须先暂存、预览并
+由人工确认后再原子提交。
 """
 
 import datetime
@@ -135,7 +136,13 @@ def normalized_rows(wb):
 
 
 def import_workbook(wb, conn, dict_map=None):
-    """核心导入：单表自动拆分。dict_map: {dict_type: {value: True}}。返回结果 dict。"""
+    """拒绝旧直写入口，防止调用方绕过 G4 的整批原子提交边界。"""
+    raise RuntimeError(
+        "import_workbook 已废弃：请使用 ImportWorkflow 的 parse_and_stage、preview、confirm 流程。"
+    )
+
+    # 以下历史实现暂留作字段映射参考；上方明确拒绝后永远不会执行，
+    # 因此不会再出现“前面行已写入、后面行失败”的部分提交。
     if dict_map is None:
         rows = conn.execute("SELECT dict_type, value FROM dict_item WHERE is_active=1").fetchall()
         dict_map = {}
