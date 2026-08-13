@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>科技项目全生命周期台账</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">📋 科技项目全生命周期台账</div>
+    <nav>
+      <button data-tab="dashboard" class="tab-btn active">🏠 工作台</button>
+      <button data-tab="projects" class="tab-btn">项目总览</button>
+      <button data-tab="reminders" class="tab-btn">⏰ 提醒</button>
+      <button data-tab="enterprises" class="tab-btn">企业</button>
+      <button data-tab="stats" class="tab-btn">统计</button>
+      <button data-tab="dict" class="tab-btn">配置</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ===== 工作台（默认页） ===== -->
+    <section id="tab-dashboard" class="tab active">
+      <div id="dash-cards" class="dash-cards"></div>
+      <div class="dash-cols">
+        <div class="dash-panel">
+          <div class="sub-title">⏰ 待办节点（30 天内到期 + 逾期）</div>
+          <div id="dash-reminders"></div>
+        </div>
+        <div class="dash-panel">
+          <div class="sub-title">💰 该拨未拨资金（应拨时间已到）</div>
+          <div id="dash-funding"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 项目总览 ===== -->
+    <section id="tab-projects" class="tab">
+      <div class="filters">
+        <select id="flt-level"><option value="">全部层级</option></select>
+        <select id="flt-category"><option value="">全部类型</option></select>
+        <select id="flt-stage"><option value="">全部阶段</option></select>
+        <select id="flt-district"><option value="">全部区镇</option></select>
+        <input id="flt-q" type="text" placeholder="搜索项目名/编号/企业">
+        <button id="btn-adv" class="ghost">高级筛选</button>
+        <button id="btn-search" class="ghost">查询</button>
+        <button id="btn-add-project" class="primary">＋ 新增项目</button>
+      </div>
+      <div id="adv-panel" class="adv-panel hidden">
+        <div class="adv-title">高级筛选（多条件 AND 组合）</div>
+        <div id="adv-rows"></div>
+        <div class="adv-actions">
+          <button id="btn-adv-add" class="ghost small">＋ 添加条件</button>
+          <button id="btn-adv-clear" class="ghost small">清空条件</button>
+        </div>
+      </div>
+
+      <div class="result-bar">
+        <span id="result-count"></span>
+        <button id="btn-export-current" class="ghost small">⬇ 导出当前结果</button>
+      </div>
+      <div class="table-wrap">
+        <table id="project-table">
+          <thead>
+            <tr>
+              <th>项目名称</th><th>编号/文号</th><th>层级</th><th>类型</th>
+              <th>承担企业</th><th>总金额(万)</th><th>已到位(万)</th><th>阶段</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="project-empty" class="empty hidden">暂无项目，点击右上角「新增项目」开始录入</div>
+      </div>
+
+      <div id="project-detail"></div>
+    </section>
+
+    <!-- ===== 提醒 ===== -->
+    <section id="tab-reminders" class="tab">
+      <div class="filters">
+        <select id="rm-days">
+          <option value="30">未来 30 天</option>
+          <option value="60">未来 60 天</option>
+          <option value="90">未来 90 天</option>
+          <option value="365">未来 365 天</option>
+        </select>
+        <button id="btn-rm-refresh" class="ghost">刷新</button>
+        <span class="rm-legend"><span class="lg overdue"></span>已逾期 <span class="lg red"></span>≤7天 <span class="lg yellow"></span>≤30天</span>
+      </div>
+      <div class="table-wrap">
+        <table id="reminder-table">
+          <thead>
+            <tr><th>级别</th><th>项目</th><th>层级</th><th>节点</th><th>计划时间</th><th>剩余天数</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="reminder-empty" class="empty hidden">🎉 当前没有到期或逾期的节点</div>
+      </div>
+    </section>
+
+    <!-- ===== 企业 ===== -->
+    <section id="tab-enterprises" class="tab">
+      <div class="filters">
+        <button id="btn-add-enterprise" class="primary">＋ 新增企业</button>
+      </div>
+      <div class="table-wrap">
+        <table id="enterprise-table">
+          <thead>
+            <tr>
+              <th>企业名称</th><th>统一信用代码</th><th>类型</th><th>区镇</th>
+              <th>资质</th><th>项目数</th><th>累计金额(万)</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="enterprise-empty" class="empty hidden">暂无企业</div>
+      </div>
+    </section>
+
+    <!-- ===== 统计 ===== -->
+    <section id="tab-stats" class="tab">
+      <div class="filters">
+        <select id="st-by">
+          <option value="category">按类型</option>
+          <option value="level">按层级</option>
+          <option value="stage">按阶段</option>
+          <option value="year">按年度</option>
+          <option value="enterprise">按企业</option>
+          <option value="source">按资金来源</option>
+        </select>
+        <button id="btn-st-export" class="ghost">导出 CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table id="stats-table">
+          <thead><tr><th>维度</th><th>项目数</th><th>金额合计(万元)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="stats-empty" class="empty hidden">暂无数据</div>
+      </div>
+    </section>
+
+    <!-- ===== 配置 ===== -->
+    <section id="tab-dict" class="tab">
+      <div class="notice">⚙️ 配置管理：政策调整时可自助「新增」或「停用」类别。停用后不再出现在下拉框，历史数据不受影响。</div>
+      <div id="dict-view"></div>
+    </section>
+  </main>
+
+  <!-- 弹窗（企业/项目 新增编辑 + Excel 批量导入） -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head"><h3 id="modal-title"></h3><button id="btn-modal-close" class="x">✕</button></div>
+
+      <!-- 标签页：仅「新增项目」显示 -->
+      <div id="modal-tabs" class="modal-tabs hidden">
+        <button class="mtab active" data-mtab="manual">✍️ 手动录入</button>
+        <button class="mtab" data-mtab="excel">📥 Excel 批量导入</button>
+      </div>
+
+      <div id="mtab-manual">
+        <form id="modal-form"></form>
+        <div class="modal-actions">
+          <button id="btn-modal-cancel" class="ghost">取消</button>
+          <button id="btn-modal-save" class="primary">保存</button>
+        </div>
+      </div>
+
+      <div id="mtab-excel" class="hidden">
+        <div class="excel-tools">
+          <button id="btn-modal-template" class="ghost">📄 下载模板（一张表，自动归仓）</button>
+        </div>
+        <div id="drop-zone" class="drop-zone">
+          <div class="dz-icon">📥</div>
+          <div class="dz-text">把填好的 Excel 拖到这里</div>
+          <div class="dz-sub">一张总表包含企业与项目所有字段，系统自动拆分归仓（.xlsx）</div>
+          <input type="file" id="file-import2" accept=".xlsx" class="hidden">
+        </div>
+        <div id="excel-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- 拖拽导入遮罩 -->
+  <div class="drag-overlay">📥 松开鼠标，导入 Excel 文件</div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

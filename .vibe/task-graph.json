@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "phase-1-skeleton",
+      "objective": "搭建项目骨架：目录、schema.sql（5表+种子）、启动脚本、.vibe 治理",
+      "inputs": ["设计方案.md"],
+      "outputs": ["schema.sql", "start.bat", ".vibe/"],
+      "dependencies": [],
+      "constraints": ["零第三方依赖；字段按设计稿"],
+      "allowed_tools": ["python", "bash", "file-edit"],
+      "acceptance": ["python -c \"import app; app.init_db()\" 后 5 表 31 种子存在"],
+      "budget": {"time": "1h", "tokens": null},
+      "failure_conditions": ["表结构或种子与设计不符"],
+      "escalation_conditions": ["字段需变更需用户确认"],
+      "status": "completed"
+    },
+    {
+      "id": "phase-2-minimal-loop",
+      "objective": "最小闭环：企业/项目/资金/节点增删改查 + 项目全貌查询 + 前端界面",
+      "inputs": ["schema.sql", "app.py"],
+      "outputs": ["app.py", "static/index.html", "static/app.js", "static/style.css"],
+      "dependencies": ["phase-1-skeleton"],
+      "constraints": ["标准库后端；原生JS前端；API 白名单校验"],
+      "allowed_tools": ["python", "node", "bash", "file-edit", "curl"],
+      "acceptance": ["端到端 API 测试 15 项通过；py_compile/node --check 通过"],
+      "budget": {"time": "2h", "tokens": null},
+      "failure_conditions": ["CRUD 或全貌查询不可用"],
+      "escalation_conditions": ["接口设计与前端字段冲突"],
+      "status": "completed"
+    },
+    {
+      "id": "phase-3-complete",
+      "objective": "补全：节点提醒面板、资金勾稽核对、统计报表、企业画像、配置管理界面（增/停用/排序）",
+      "inputs": ["app.py", "static/app.js"],
+      "outputs": ["app.py", "static/app.js", "static/style.css"],
+      "dependencies": ["phase-2-minimal-loop"],
+      "constraints": ["提醒分级：<=7天红 / <=30天黄 / 逾期深红；勾稽：Σ来源 vs 总金额；配置停用不删除"],
+      "allowed_tools": ["python", "node", "bash", "file-edit"],
+      "acceptance": ["6 个视图全部可用；A3/A4/A8 达标"],
+      "budget": {"time": "3h", "tokens": null},
+      "failure_conditions": ["勾稽核对或提醒计算错误"],
+      "escalation_conditions": ["种子值需调整需用户确认"],
+      "status": "completed"
+    },
+    {
+      "id": "phase-4-mcp-readonly",
+      "objective": "只读 MCP server：mcp_server.py（官方 mcp SDK），对接 Codex/WorkBuddy",
+      "inputs": ["app.py", ".vibe/architecture.md"],
+      "outputs": ["mcp_server.py", "requirements-mcp.txt"],
+      "dependencies": ["phase-3-complete"],
+      "constraints": ["只注册只读查询工具，无任何写工具；stdlib stdio 传输"],
+      "allowed_tools": ["python", "pip", "bash", "file-edit"],
+      "acceptance": ["MCP 工具列表仅含查询工具；写请求不存在"],
+      "budget": {"time": "2h", "tokens": null},
+      "failure_conditions": ["MCP 握手或查询失败"],
+      "escalation_conditions": ["SDK 依赖安装受阻"],
+      "status": "completed"
+    },
+    {
+      "id": "phase-5-harden",
+      "objective": "硬化：一键备份、Excel 导入、错误处理、启动健壮性",
+      "inputs": ["app.py", "static/app.js"],
+      "outputs": ["backup.py 或 app.py 备份功能", "import_excel.py", "app.py"],
+      "dependencies": ["phase-4-mcp-readonly"],
+      "constraints": ["备份不覆盖旧档；Excel 导入字段映射表；错误信息可读"],
+      "allowed_tools": ["python", "pip", "bash", "file-edit"],
+      "acceptance": ["备份/恢复演练通过；样例 Excel 导入通过"],
+      "budget": {"time": "3h", "tokens": null},
+      "failure_conditions": ["备份或导入数据不一致"],
+      "escalation_conditions": ["导入格式需用户提供样例"],
+      "status": "in_progress"
+    }
+  ]
+}
