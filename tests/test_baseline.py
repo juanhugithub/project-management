@@ -46,10 +46,10 @@ def test_valid_enterprise_project_roundtrip(client):
 
     status, proj = client.request(
         "POST", "/api/projects",
-        {"name": "示范项目", "enterprise_id": eid, "level": "省级",
-         "category": "科技成果转化", "total_amount": 100,
-         "start_date": "2024-01-01", "end_date": "2024-12-31",
-         "stage": "已立项"})
+            {"name": "示范项目", "enterprise_id": eid, "level": "省级",
+             "category": "科技成果转化", "total_amount": 100,
+             "start_date": "2024-01-01", "end_date": "2024-12-31",
+             "stage": "已立项", "identity_status": "人工编号待补"})
     assert status == 200, f"建项目失败: {status} {proj}"
     pid = proj["id"]
     assert proj["total_amount"] == 100

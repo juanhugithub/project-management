@@ -48,9 +48,9 @@ def create(conn, table, payload, commit=True):
         if start_date and start_date[:4] in archived_years(conn):
             raise DomainError('该年度项目已归档，禁止新增')
         enterprise_id = payload.get('enterprise_id')
-        enterprise = conn.execute("SELECT 1 FROM enterprise WHERE id=? AND is_deleted=0", (enterprise_id,)).fetchone()
+        enterprise = conn.execute("SELECT 1 FROM enterprise WHERE id=? AND is_deleted=0 AND is_active=1", (enterprise_id,)).fetchone()
         if not enterprise:
-            raise DomainError('enterprise_id 必须引用存在且未删除的承担企业')
+            raise DomainError('enterprise_id 必须引用存在、未删除且启用的承担企业')
         validate_project(conn, payload)
     elif table in ('funding', 'node'):
         _require_mutable_project(conn, conn.execute("SELECT * FROM project WHERE id=? AND is_deleted=0", (payload.get('project_id'),)).fetchone())
@@ -84,8 +84,8 @@ def update(conn, table, record_id, payload):
     merged = dict(current); merged.update(payload)
     if table == 'project':
         validate_project(conn, payload, dict(current))
-        if 'enterprise_id' in payload and not conn.execute("SELECT 1 FROM enterprise WHERE id=? AND is_deleted=0", (payload['enterprise_id'],)).fetchone():
-            raise DomainError('enterprise_id 必须引用存在且未删除的承担企业')
+        if 'enterprise_id' in payload and not conn.execute("SELECT 1 FROM enterprise WHERE id=? AND is_deleted=0 AND is_active=1", (payload['enterprise_id'],)).fetchone():
+            raise DomainError('enterprise_id 必须引用存在、未删除且启用的承担企业')
     elif table == 'funding':
         validate_funding(merged); validate_dicts(conn, table, merged)
     elif table == 'node':
@@ -148,3 +148,20 @@ def set_archived_years(conn, years, reason=None):
     action = 'archive' if after_years - before_years else 'unarchive'
     _audit(conn, action, 'system', None, {'archived_years': sorted(before_years)}, {'archived_years': sorted(after_years)}, reason)
     conn.commit()
+
+
+def set_enterprise_active(conn, enterprise_id, is_active, reason=None):
+    """独立维护企业承接资格；不删除历史企业和项目，启停均保留审计证据。"""
+    current = conn.execute("SELECT * FROM enterprise WHERE id=? AND is_deleted=0", (enterprise_id,)).fetchone()
+    if not current:
+        raise DomainError('企业不存在或已删除')
+    target = 1 if is_active else 0
+    if current['is_active'] == target:
+        raise DomainError('企业已处于目标状态')
+    if target and not reason:
+        raise DomainError('启用企业必须填写理由')
+    conn.execute("UPDATE enterprise SET is_active=?, updated_at=datetime('now','localtime') WHERE id=?", (target, enterprise_id))
+    after = conn.execute("SELECT * FROM enterprise WHERE id=?", (enterprise_id,)).fetchone()
+    _audit(conn, 'enable' if target else 'disable', 'enterprise', enterprise_id, current, after, reason)
+    conn.commit()
+    return dict(after)

@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS enterprise (
     created_at      TEXT DEFAULT (datetime('now','localtime')),
     updated_at      TEXT DEFAULT (datetime('now','localtime')),
     is_deleted      INTEGER NOT NULL DEFAULT 0,   -- G3 软删除标记：0=正常 1=已删除
-    deleted_at      TEXT                          -- G3 软删除时间（本地时间）
+    deleted_at      TEXT,                         -- G3 软删除时间（本地时间）
+    is_active       INTEGER NOT NULL DEFAULT 1    -- G7 独立停用：保留历史，0 时不得新增承接项目
 );
 
 -- 2. 项目表
@@ -26,6 +27,8 @@ CREATE TABLE IF NOT EXISTS project (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT NOT NULL,               -- 项目名称（必填）
     project_no      TEXT,                        -- 项目编号/立项文号
+    identity_status TEXT NOT NULL DEFAULT '正式编号' CHECK(identity_status IN ('正式编号','人工编号待补')),
+                                                    -- G7 编号身份：缺正式编号时必须显式标记为人工待补
     level           TEXT,                        -- 层级（取值由 dict_item 维护）
     category        TEXT,                        -- 项目类型（取值由 dict_item 维护）
     enterprise_id   INTEGER REFERENCES enterprise(id) ON DELETE SET NULL,

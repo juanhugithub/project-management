@@ -81,8 +81,9 @@ def test_p003_archived_year_blocks_new_project(client):
 
     # 先建立项目，随后归档，才能验证归档后的既有记录修改同样受限。
     created_status, ok_proj = client.request(
-        "POST", "/api/projects",
-        {"name": "归档前项目", "enterprise_id": ent["id"], "start_date": "2024-01-01"})
+            "POST", "/api/projects",
+            {"name": "归档前项目", "enterprise_id": ent["id"], "start_date": "2024-01-01",
+             "identity_status": "人工编号待补"})
     assert created_status == 200 and ok_proj.get("id") is not None
 
     # 归档 2024 年后，既有记录不可修改，新记录也不可创建。
@@ -111,8 +112,9 @@ def test_p001_funded_total_has_single_semantics(client):
     _, ent = client.request(
         "POST", "/api/enterprises", {"name": "乙公司", "credit_code": "91320000TEST02"})
     _, proj = client.request(
-        "POST", "/api/projects",
-        {"name": "口径项目", "enterprise_id": ent["id"], "total_amount": 200})
+            "POST", "/api/projects",
+            {"name": "口径项目", "enterprise_id": ent["id"], "total_amount": 200,
+             "identity_status": "人工编号待补"})
     pid = proj["id"]
 
     # 两笔资金：已到账 100 万（已拨付且到账）、未拨付 50 万（仅计划）

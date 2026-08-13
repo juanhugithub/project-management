@@ -29,7 +29,7 @@ PORT = 8765
 FIELDS = {
     "enterprise": ["name", "credit_code", "enterprise_type", "qualifications", "district",
                    "contact_person", "contact_phone", "address", "note"],
-    "project": ["name", "project_no", "level", "category", "enterprise_id", "total_amount",
+    "project": ["name", "project_no", "identity_status", "level", "category", "enterprise_id", "total_amount",
                 "start_date", "end_date", "stage", "match_ratio", "leader", "contact_phone", "note"],
     "funding": ["project_id", "source_type", "amount", "batch", "plan_date", "actual_date", "status", "note"],
     "node": ["project_id", "node_type", "plan_date", "actual_date", "status", "has_major_change", "note"],
@@ -713,6 +713,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._ok({"deleted": eid})
             elif method == "POST" and len(parts) == 2 and parts[1] == "restore":
                 self._ok(services.restore(conn, "enterprise", int(parts[0]), self._read_body().get("reason")))
+            elif method == "POST" and len(parts) == 2 and parts[1] in ("disable", "enable"):
+                body = self._read_body()
+                self._ok(services.set_enterprise_active(conn, int(parts[0]), parts[1] == "enable", body.get("reason")))
             else:
                 self._err(405, "method not allowed")
         except DomainError as exc:

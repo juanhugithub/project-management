@@ -253,12 +253,8 @@ def test_project_unique_key_duplicate_rejected(tmp_db, client):
     assert _count_rows(tmp_db, "project") == before, "重复记录被写入"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实施无编号治理：app._api_project POST 只校验 name，无 project_no "
-    "的项目被直接入账。契约（ADR-0001 决策二）：无编号记录不得自动入账，"
-    "只能进入待确认队列；当前 API 无待确认机制，故必须拒绝（400）且无入库。"))
 def test_project_without_project_no_rejected(tmp_db, client):
-    """不提供 project_no 的项目必须 400 且无入库（当前被接受并写入）。"""
+    """无编号不能默认为正式项目，必须由录入员显式承担人工待补标记责任。"""
     _, ent = _new_enterprise(client, "91320000G2UNI03")
     before = _count_rows(tmp_db, "project")
     status, resp = client.request(
@@ -266,8 +262,16 @@ def test_project_without_project_no_rejected(tmp_db, client):
         {"name": "无编号项目", "enterprise_id": ent["id"], "level": "省级",
          "category": "科技成果转化", "total_amount": 100,
          "start_date": "2024-01-01", "end_date": "2024-12-31", "stage": "已立项"})
-    assert status in (400, 403, 409), f"无 project_no 的项目被自动入账: status={status} {resp}"
+    assert status == 400, f"无 project_no 的项目被自动入账: status={status} {resp}"
     assert _count_rows(tmp_db, "project") == before, "无编号记录被写入"
+
+    status, created = client.request(
+        "POST", "/api/projects",
+        {"name": "人工待补编号项目", "identity_status": "人工编号待补", "enterprise_id": ent["id"],
+         "level": "省级", "category": "科技成果转化", "total_amount": 100,
+         "start_date": "2024-01-01", "end_date": "2024-12-31", "stage": "已立项"})
+    assert status == 200, f"显式人工待补标记应允许人工录入: {status} {created}"
+    assert created["project_no"] is None and created["identity_status"] == "人工编号待补"
 
 
 # ===========================================================================
@@ -555,29 +559,14 @@ def test_nonexistent_enterprise_rejected(tmp_db, client):
     assert _count_rows(tmp_db, "project") == before, "外键约束未生效，项目被写入"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "G2 未实现企业停用/软删除：enterprise 表尚无停用标记列（is_active/status/"
-    "deleted_at），『停用企业不得承接新项目』的契约无法表达与验证（PLAN §3.2）。"
-    "实现后本测试应验证：停用企业承接新项目被拒且无新增行。"))
 def test_disabled_enterprise_rejected(tmp_db, client):
-    """停用企业不得承接新项目（当前无停用机制 → 预期失败）。"""
-    conn = db_conn(tmp_db)
-    try:
-        cols = {r["name"] for r in conn.execute("PRAGMA table_info(enterprise)")}
-    finally:
-        conn.close()
-    if not ({"is_active", "status", "deleted_at"} & cols):
-        pytest.fail(
-            "enterprise 表缺少停用/软删除标记列（is_active/status/deleted_at），"
-            "企业停用语义尚未实现，测试无法继续。")
-
+    """政务停用保留历史查询，仅禁止该企业继续承接新的项目。"""
     _, ent = _new_enterprise(client, "91320000G2OFF01")
-    conn = db_conn(tmp_db)
-    try:
-        conn.execute("UPDATE enterprise SET is_active=0 WHERE id=?", (ent["id"],))
-        conn.commit()
-    finally:
-        conn.close()
+    _, historical = _new_project(client, ent["id"], project_no="G2-HISTORY-01")
+    status, disabled = client.request("POST", f"/api/enterprises/{ent['id']}/disable", {"reason": "企业资格审核到期"})
+    assert status == 200 and disabled["is_active"] == 0
+    status, detail = client.request("GET", f"/api/enterprises/{ent['id']}")
+    assert status == 200 and any(p["id"] == historical["id"] for p in detail["projects"]), "停用不得隐藏历史项目"
     before = _count_rows(tmp_db, "project")
     status, resp = client.request(
         "POST", "/api/projects",
@@ -586,6 +575,14 @@ def test_disabled_enterprise_rejected(tmp_db, client):
          "start_date": "2024-01-01", "end_date": "2024-12-31", "stage": "已立项"})
     assert status in (400, 403, 409), f"停用企业承接新项目被接受: status={status} {resp}"
     assert _count_rows(tmp_db, "project") == before, "停用企业承接的项目被写入"
+    status, enabled = client.request("POST", f"/api/enterprises/{ent['id']}/enable", {"reason": "资格复审通过"})
+    assert status == 200 and enabled["is_active"] == 1
+    conn = db_conn(tmp_db)
+    try:
+        actions = {row["action"] for row in conn.execute("SELECT action FROM audit_log WHERE object_type='enterprise' AND object_id=?", (ent["id"],))}
+    finally:
+        conn.close()
+    assert {"disable", "enable"} <= actions, "启停企业必须留下审计记录"
 
 
 # ===========================================================================

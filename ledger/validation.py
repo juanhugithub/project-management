@@ -7,6 +7,7 @@ from .errors import DomainError
 
 NORMAL_STAGES = ("申报中", "已立项", "实施中", "待验收", "已验收", "绩效跟踪", "已完结")
 ALL_STAGES = set(NORMAL_STAGES) | {"中止", "撤销"}
+IDENTITY_STATUSES = {"正式编号", "人工编号待补"}
 DICT_FIELDS = {
     ("enterprise", "enterprise_type"): "enterprise_type",
     ("enterprise", "district"): "district",
@@ -86,6 +87,15 @@ def validate_project(conn, payload, current=None):
         old = (current or {}).get("stage")
         if old is not None and old != stage and not allowed_stage_transition(old, stage):
             raise DomainError(f"不允许阶段流转：{old}→{stage}")
+    # 正式编号项目沿用默认正式身份；唯独无编号不得静默落库。
+    identity_status = merged.get("identity_status") or ("正式编号" if merged.get("project_no") else None)
+    if identity_status not in IDENTITY_STATUSES:
+        raise DomainError("identity_status 必须是正式编号或人工编号待补")
+    project_no = merged.get("project_no")
+    if project_no and identity_status != "正式编号":
+        raise DomainError("填写项目编号/文号时 identity_status 必须为正式编号")
+    if not project_no and identity_status != "人工编号待补":
+        raise DomainError("无项目编号/文号必须显式标记为人工编号待补")
     validate_dicts(conn, "project", payload)
 
 
