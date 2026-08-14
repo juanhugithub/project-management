@@ -10,6 +10,18 @@ const NODE_STATUS = ["待办", "已完成", "已逾期"];
 
 const state = { dict: {}, enterprises: [], filters: {}, archivedYears: [] };
 
+function showLogin(message = "请登录后继续使用台账。") {
+  $("#auth-panel").classList.remove("hidden");
+  $("#auth-error").textContent = message;
+  $("#auth-error").classList.remove("hidden");
+  setTimeout(() => $("#auth-username").focus(), 0);
+}
+
+function hideLogin() {
+  $("#auth-panel").classList.add("hidden");
+  $("#auth-error").classList.add("hidden");
+}
+
 /* ---------- API ---------- */
 async function api(path, method = "GET", body = null) {
   const opt = { method, headers: {} };
@@ -17,7 +29,12 @@ async function api(path, method = "GET", body = null) {
   const res = await fetch("/api" + path, opt);
   let data = {};
   try { data = await res.json(); } catch (e) { /* ignore */ }
-  if (!res.ok) throw new Error(data.error || `请求失败(${res.status})`);
+  if (!res.ok) {
+    const error = new Error(data.error || `请求失败(${res.status})`);
+    error.status = res.status;
+    if (res.status === 401 && path !== "/auth/login") showLogin("会话未登录或已失效，请登录后重试。");
+    throw error;
+  }
   return data;
 }
 
@@ -892,16 +909,36 @@ $("#st-by").addEventListener("change", loadStats);
 $("#rm-days").addEventListener("change", loadReminders);
 $("#btn-rm-refresh").addEventListener("click", loadReminders);
 
+$("#auth-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const username = $("#auth-username").value.trim();
+  const password = $("#auth-password").value;
+  try {
+    await api("/auth/login", "POST", { username, password });
+    $("#auth-password").value = "";
+    hideLogin();
+    await loadWorkspace();
+  } catch (e) {
+    $("#auth-error").textContent = e.message || "登录失败，请检查账号和密码。";
+    $("#auth-error").classList.remove("hidden");
+    $("#auth-password").focus();
+  }
+});
+
 /* ---------- 初始化 ---------- */
+async function loadWorkspace() {
+  await loadDict();
+  await loadEnterprises();
+  await loadConfig();
+  await loadProjects();
+  renderDict();
+  await loadDashboard();
+}
+
 (async function init() {
   try {
-    await loadDict();
-    await loadEnterprises();
-    await loadConfig();
-    await loadProjects();
-    renderDict();
-    loadDashboard();
+    await loadWorkspace();
   } catch (e) {
-    toast("加载失败：" + e.message, "err");
+    if (e.status !== 401) toast("加载失败：" + e.message, "err");
   }
 })();
