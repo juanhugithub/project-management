@@ -171,7 +171,7 @@ async function checkForUpdate() {
   const banner = $("#update-banner");
   try {
     const result = await api("/update");
-    if (!result.update_available) { banner.classList.add("hidden"); return; }
+    if (!result.update_available) { banner.classList.add("hidden"); return { configured: true, available: false }; }
     banner.innerHTML = `<span><b>发现新版本 ${escapeHtml(result.release_version)}</b>${(result.notes || []).length ? "：" + escapeHtml(result.notes.join("；")) : ""}</span><button id="btn-apply-update" class="primary small">下载并更新</button>`;
     banner.classList.remove("hidden");
     $("#btn-apply-update").addEventListener("click", async () => {
@@ -179,8 +179,11 @@ async function checkForUpdate() {
       try { await api("/update/apply", "POST", {}); banner.innerHTML = "更新完成，正在重新启动…"; setTimeout(() => location.reload(), 5000); }
       catch (error) { button.disabled = false; button.textContent = "重试更新"; toast(error.message, "err"); }
     });
+    return { configured: true, available: true };
   } catch (error) {
-    if (error.status !== 409) console.warn("更新检查失败", error.message);
+    if (error.status === 409) return { configured: false, available: false };
+    console.warn("更新检查失败", error.message);
+    return { configured: false, available: false };
   }
 }
 
@@ -702,9 +705,10 @@ async function renderDict() {
   $("#dict-view").querySelectorAll(".dict-sortable").forEach(list => {
     let dragging = null;
     list.querySelectorAll(".dict-item").forEach(item => {
-      item.addEventListener("dragstart", () => { dragging = item; item.classList.add("dragging"); });
-      item.addEventListener("dragend", () => { item.classList.remove("dragging"); dragging = null; });
+      item.addEventListener("dragstart", event => { event.stopPropagation(); dragging = item; item.classList.add("dragging"); });
+      item.addEventListener("dragend", event => { event.stopPropagation(); item.classList.remove("dragging"); dragging = null; });
       item.addEventListener("dragover", event => {
+        event.stopPropagation();
         event.preventDefault();
         if (!dragging || dragging === item) return;
         const box = item.getBoundingClientRect();
@@ -859,6 +863,7 @@ $$("#modal-tabs .mtab").forEach(b => b.addEventListener("click", () => switchMTa
 let dragDepth = 0;
 ["dragenter", "dragover"].forEach(evt => {
   document.addEventListener(evt, e => {
+    if (e.target.closest(".dict-item")) return;
     e.preventDefault();
     dragDepth++;
     document.body.classList.add("dragging");
@@ -866,6 +871,7 @@ let dragDepth = 0;
 });
 ["dragleave", "drop"].forEach(evt => {
   document.addEventListener(evt, e => {
+    if (e.target.closest(".dict-item")) return;
     e.preventDefault();
     dragDepth--;
     if (dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); }
@@ -962,6 +968,10 @@ $("#st-by").addEventListener("change", loadStats);
 $("#rm-days").addEventListener("change", loadReminders);
 $("#btn-rm-refresh").addEventListener("click", loadReminders);
 $("#btn-usage-refresh").addEventListener("click", loadUsage);
+$("#btn-check-update").addEventListener("click", async () => {
+  try { const result = await checkForUpdate(); if (!result.configured) toast("尚未配置 Gitee 发布清单，当前只能使用本地功能", "err"); else if (!result.available) toast("当前已是最新版本"); }
+  catch (error) { toast(error.message, "err"); }
+});
 
 $("#auth-form").addEventListener("submit", async (event) => {
   event.preventDefault();
