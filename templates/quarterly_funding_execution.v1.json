@@ -1,0 +1,21 @@
+{
+  "template_id": "quarterly_funding_execution",
+  "version": "1.0.0",
+  "name": "季度资金执行表",
+  "description": "按项目列示指定季度末的计划、已拨和已到账资金执行情况。金额单位为万元。",
+  "parameters": {
+    "year": {"type": "integer", "required": true},
+    "quarter": {"type": "integer", "required": true, "allowed": [1, 2, 3, 4]},
+    "district": {"type": "string", "required": false}
+  },
+  "columns": [
+    {"name": "project_no", "label": "项目编号/文号", "required": true},
+    {"name": "project_name", "label": "项目名称", "required": true},
+    {"name": "enterprise_name", "label": "承担企业", "required": true},
+    {"name": "district", "label": "区镇", "required": true},
+    {"name": "total_amount", "label": "项目总金额(万元)", "required": false},
+    {"name": "planned_total", "label": "计划拨付额(万元)", "required": true},
+    {"name": "disbursed_total", "label": "已拨付额(万元)", "required": true},
+    {"name": "received_total", "label": "已到账额(万元)", "required": true}
+  ]
+}

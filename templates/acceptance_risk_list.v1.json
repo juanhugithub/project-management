@@ -1,0 +1,22 @@
+{
+  "template_id": "acceptance_risk_list",
+  "version": "1.0.0",
+  "name": "验收风险清单",
+  "description": "列出已进入待验收阶段或验收节点临期、逾期而未完成的项目。金额单位为万元。",
+  "parameters": {
+    "reference_date": {"type": "date", "required": true},
+    "days": {"type": "integer", "required": true},
+    "district": {"type": "string", "required": false}
+  },
+  "columns": [
+    {"name": "project_no", "label": "项目编号/文号", "required": true},
+    {"name": "project_name", "label": "项目名称", "required": true},
+    {"name": "enterprise_name", "label": "承担企业", "required": true},
+    {"name": "district", "label": "区镇", "required": true},
+    {"name": "stage", "label": "当前阶段", "required": true},
+    {"name": "acceptance_plan_date", "label": "验收计划日期", "required": false},
+    {"name": "risk_reason", "label": "风险原因", "required": true},
+    {"name": "planned_total", "label": "计划拨付额(万元)", "required": true},
+    {"name": "received_total", "label": "已到账额(万元)", "required": true}
+  ]
+}
