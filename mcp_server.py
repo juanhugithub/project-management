@@ -9,17 +9,34 @@
 启动（MCP 客户端通过 stdio 调用）：python mcp_server.py
 """
 
+import hashlib
+import json
 import os
 import sqlite3
 
 from mcp.server.fastmcp import FastMCP
-from ledger import queries
+from ledger import queries, templates
 from mcp_contract import envelope
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "project.db")
 
 mcp = FastMCP("科技项目台账")
+
+
+def create_streamable_http_app(transport_security=None, remote=False):
+    """返回与 stdio 相同的只读工具集合；远程入口使用无会话的 HTTP 传输。"""
+    if not remote:
+        return mcp.streamable_http_app()
+    # 远程服务使用独立 FastMCP 实例，避免改变 stdio/本机服务的回环 Host 防护设置。
+    remote_server = FastMCP(
+        "科技项目台账",
+        tools=list(mcp._tool_manager._tools.values()),
+        transport_security=transport_security,
+        json_response=True,
+        stateless_http=True,
+    )
+    return remote_server.streamable_http_app()
 
 
 def get_db():
@@ -75,6 +92,19 @@ def visible_project_rows(conn, filters=None):
         "WHERE " + " AND ".join(where) + " ORDER BY p.id"
     )
     return rows_to_list(conn.execute(sql, params).fetchall())
+
+
+def visible_template_dataset(conn, dataset):
+    """将 G9 模板数据集复用 MCP 的归档可见性边界，并重新计算事实快照哈希。"""
+    visible_ids = {project["id"] for project in visible_project_rows(conn)}
+    rows = [row for row in dataset["rows"] if row["project_id"] in visible_ids]
+    if len(rows) == len(dataset["rows"]):
+        return dataset
+    result = {**dataset, "rows": rows, "source_project_ids": sorted({row["project_id"] for row in rows})}
+    snapshot_input = {key: value for key, value in result.items() if key != "snapshot_hash"}
+    canonical = json.dumps(snapshot_input, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    result["snapshot_hash"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return result
 
 
 # ---------------------------------------------------------------- 项目
@@ -400,6 +430,48 @@ def list_composite_risks(days: int = 90, district: str = None) -> dict:
         return envelope({"items": items, "count": len(items)}, filters)
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------- G9 模板任务（只读）
+@mcp.tool()
+def list_reporting_templates() -> dict:
+    """发现可供 Agent 填表的版本化模板，不暴露数据库结构或任何写入工具。"""
+    return envelope({"items": templates.list_reporting_templates()})
+
+
+@mcp.tool()
+def get_template_schema(template_id: str, version: str = None) -> dict:
+    """读取指定模板的字段、顺序、必填规则和版本；模板不存在时返回可读错误。"""
+    try:
+        return envelope({"ok": True, "template": templates.get_template_schema(template_id, version)},
+                        {"template_id": template_id, "version": version})
+    except templates.TemplateError as error:
+        return envelope({"ok": False, "error": str(error)}, {"template_id": template_id, "version": version})
+
+
+@mcp.tool()
+def build_template_dataset(template_id: str, parameters: dict, version: str = None) -> dict:
+    """按固定模板和明确参数构建可追溯的只读事实数据集，供 Agent 填表或起草。"""
+    conn = get_db()
+    try:
+        dataset = templates.build_template_dataset(conn, template_id, parameters, version)
+        return envelope({"ok": True, "dataset": visible_template_dataset(conn, dataset)},
+                        {"template_id": template_id, "version": version, "parameters": parameters})
+    except templates.TemplateError as error:
+        return envelope({"ok": False, "error": str(error)},
+                        {"template_id": template_id, "version": version, "parameters": parameters})
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+def validate_filled_template(template_id: str, rows: list, version: str = None) -> dict:
+    """校验 Agent 已填写的模板行；只返回校验结论，绝不修改或登记任何正式台账。"""
+    try:
+        return envelope({"ok": True, "validation": templates.validate_filled_template(template_id, rows, version)},
+                        {"template_id": template_id, "version": version})
+    except templates.TemplateError as error:
+        return envelope({"ok": False, "error": str(error)}, {"template_id": template_id, "version": version})
 
 
 # ---------------------------------------------------------------- 搜索
