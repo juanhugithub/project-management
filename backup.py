@@ -16,11 +16,13 @@ import datetime as dt
 import sqlite3
 import tempfile
 from pathlib import Path
+from runtime_paths import get_runtime_paths
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_SOURCE = BASE_DIR / "data" / "project.db"
-DEFAULT_BACKUP_DIR = BASE_DIR / "backups"
+RUNTIME_PATHS = get_runtime_paths()
+DEFAULT_SOURCE = RUNTIME_PATHS.database
+DEFAULT_BACKUP_DIR = RUNTIME_PATHS.backups
 
 
 def _readonly_connection(database_path: Path) -> sqlite3.Connection:

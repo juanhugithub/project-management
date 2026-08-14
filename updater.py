@@ -13,12 +13,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backup import create_backup
+from runtime_paths import get_runtime_paths
 from version import get_version
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DEFAULT_DATABASE = PROJECT_ROOT / "data" / "project.db"
-DEFAULT_BACKUP_DIR = PROJECT_ROOT / "backups"
+RUNTIME_PATHS = get_runtime_paths()
+DEFAULT_DATABASE = RUNTIME_PATHS.database
+DEFAULT_BACKUP_DIR = RUNTIME_PATHS.backups
 
 # 这些路径代表正式事实、本机运行材料或凭据，任何一个进入发布版本都必须失败。
 PROTECTED_PREFIXES = (

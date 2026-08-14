@@ -17,9 +17,11 @@ import sqlite3
 from mcp.server.fastmcp import FastMCP
 from ledger import queries, templates
 from mcp_contract import envelope
+from runtime_paths import get_runtime_paths
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "data", "project.db")
+# MCP 与本地网页读取同一份用户运行目录中的正式库。
+DB_PATH = str(get_runtime_paths().database)
 
 mcp = FastMCP("科技项目台账")
 

@@ -19,6 +19,7 @@ from typing import Awaitable, Callable
 
 import uvicorn
 from mcp.server.transport_security import TransportSecuritySettings
+from runtime_paths import get_runtime_paths
 
 BASE_DIR = Path(__file__).resolve().parent
 LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
@@ -58,13 +59,18 @@ def load_config(env: dict[str, str] | None = None) -> RemoteMCPConfig:
     if not 1 <= port <= 65535:
         raise RemoteMCPConfigurationError("REMOTE_MCP_PORT 必须在 1 至 65535 之间")
 
+    audit_log = values.get("REMOTE_MCP_AUDIT_LOG", "").strip()
+    # ``load_config`` 的显式 env 参数常只包含远程服务字段；运行目录仍从实际
+    # Windows 用户环境补齐 LOCALAPPDATA，同时显式传入的 LEDGER_HOME 保持最高优先级。
+    runtime_values = dict(os.environ)
+    runtime_values.update(values)
     config = RemoteMCPConfig(
         bind=bind,
         port=port,
         api_token=token,
         tls_terminated=values.get("REMOTE_MCP_TLS_TERMINATED") == "1",
         public_host=values.get("REMOTE_MCP_PUBLIC_HOST", "").strip() or None,
-        audit_log=Path(values.get("REMOTE_MCP_AUDIT_LOG", BASE_DIR / "data" / "mcp_access.log")),
+        audit_log=Path(audit_log) if audit_log else get_runtime_paths(runtime_values).logs / "mcp_access.log",
     )
     if config.public_bind:
         if "REMOTE_MCP_BIND" not in values:

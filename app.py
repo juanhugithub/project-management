@@ -17,9 +17,13 @@ from urllib.parse import urlparse, parse_qs
 from ledger.errors import DomainError
 from ledger import queries, services
 from ledger import security
+from runtime_paths import ensure_runtime_layout, get_runtime_paths
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "data", "project.db")
+# 安装目录只保存代码和资源；所有会变化的台账材料进入用户选择的运行目录。
+RUNTIME_PATHS = get_runtime_paths()
+DB_PATH = str(RUNTIME_PATHS.database)
+IMPORT_ARCHIVE_DIR = str(RUNTIME_PATHS.import_archive)
 SCHEMA_PATH = os.path.join(BASE_DIR, "schema.sql")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 HOST = "127.0.0.1"
@@ -56,25 +60,14 @@ def get_db():
 
 
 def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    ensure_runtime_layout(RUNTIME_PATHS)
     if not os.path.exists(DB_PATH):
         conn = get_db()
         with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
             conn.executescript(f.read())
         conn.commit()
         conn.close()
-    else:
-        # 老库兼容仅确保归档配置存在；结构迁移必须由维护人员显式调用 migrations.apply。
-        conn = get_db()
-        conn.executescript(
-            "CREATE TABLE IF NOT EXISTS system_config ("
-            " id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            " key TEXT UNIQUE NOT NULL,"
-            " value TEXT);"
-            "INSERT OR IGNORE INTO system_config (key, value) VALUES ('archived_years', '');"
-        )
-        conn.commit()
-        conn.close()
+    # 已存在的正式库绝不在应用启动时执行 SQL。结构升级仅能由显式迁移入口完成。
 
 
 def clean_row(row):
@@ -439,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and len(parts) == 1:
             from imports.controlled import ImportWorkflow
             try:
-                workflow = ImportWorkflow(DB_PATH, os.path.join(BASE_DIR, "imports", "archive"), apply_schema=False)
+                workflow = ImportWorkflow(DB_PATH, IMPORT_ARCHIVE_DIR, apply_schema=False)
                 self._ok(workflow.preview(int(parts[0])))
             except (DomainError, ValueError, sqlite3.Error) as exc:
                 self._err(400, str(exc))
@@ -447,7 +440,7 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and len(parts) == 2 and parts[1] == "confirm":
             from imports.controlled import ImportWorkflow
             try:
-                workflow = ImportWorkflow(DB_PATH, os.path.join(BASE_DIR, "imports", "archive"), apply_schema=False)
+                workflow = ImportWorkflow(DB_PATH, IMPORT_ARCHIVE_DIR, apply_schema=False)
                 self._ok(workflow.confirm(int(parts[0])))
             except DomainError as exc:
                 self._err(409, str(exc))
@@ -478,7 +471,7 @@ class Handler(BaseHTTPRequestHandler):
         except ImportError:
             self._err(500, "缺少 import_excel.py"); return
         try:
-            workflow = ImportWorkflow(DB_PATH, os.path.join(BASE_DIR, "imports", "archive"), apply_schema=False)
+            workflow = ImportWorkflow(DB_PATH, IMPORT_ARCHIVE_DIR, apply_schema=False)
             result = workflow.parse_and_stage(body.get("name") or "upload.xlsx", raw, normalized_rows(wb), "excel-v1")
             result["preview"] = workflow.preview(result["id"])
         except (DomainError, sqlite3.Error) as e:
