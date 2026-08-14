@@ -21,6 +21,99 @@ APP_DIRECTORY = "app"
 DATA_DIRECTORIES = ("data", "backups", "imports", "config")
 
 
+def launch_install_gui(payload: Path | None = None, suggested_root: Path | None = None) -> int:
+    """在 Windows 桌面显示安装位置选择界面。
+
+    图形界面只在用户双击安装器、且没有传入命令行参数时使用。自动化构建、
+    更新器和维护脚本仍通过 ``install --program-root ...`` 调用命令行入口，二者
+    共用 ``install_release``，避免产生两套安装逻辑。
+    """
+    try:
+        import tkinter as tk
+        from tkinter import filedialog, messagebox
+    except ImportError as error:
+        print("无法启动图形安装界面：此运行环境没有 tkinter。请在 Windows 图形化桌面中双击安装器。", file=sys.stderr)
+        return 2
+
+    selected_payload = payload or release_root() / "payload"
+    try:
+        version = read_payload_version(selected_payload)
+    except RuntimeError as error:
+        print(f"无法启动图形安装界面：{error}", file=sys.stderr)
+        return 2
+    root_path = suggested_root or default_user_root()
+    defaults = {
+        "program": root_path / APP_DIRECTORY,
+        "data": root_path / "user-data",
+        "config": root_path / "config",
+    }
+    try:
+        window = tk.Tk()
+    except tk.TclError as error:
+        print("无法启动图形安装界面：未检测到可用的 Windows 桌面。请在图形化 Windows 桌面中双击安装器。", file=sys.stderr)
+        return 2
+
+    window.title(f"{PRODUCT_NAME} 安装器")
+    window.resizable(False, False)
+    window.columnconfigure(1, weight=1)
+    values = {name: tk.StringVar(value=str(path)) for name, path in defaults.items()}
+
+    tk.Label(window, text=f"{PRODUCT_NAME} {version}", font=("Microsoft YaHei UI", 12, "bold")).grid(
+        row=0, column=0, columnspan=3, padx=18, pady=(18, 6), sticky="w"
+    )
+    tk.Label(
+        window,
+        justify="left",
+        text="请分别选择程序、台账数据和本机配置的保存位置。\n"
+             "数据库、备份和导入原件只写入数据目录；安装和更新不会覆盖已有数据。\n"
+             "安装完成后，桌面和开始菜单会提供启动、备份、诊断、更新与卸载入口。",
+    ).grid(row=1, column=0, columnspan=3, padx=18, pady=(0, 14), sticky="w")
+
+    labels = (("program", "程序目录（版本文件）"), ("data", "数据目录（数据库、备份、导入）"), ("config", "配置目录（安装位置记录）"))
+    for row, (name, label) in enumerate(labels, start=2):
+        tk.Label(window, text=label).grid(row=row, column=0, padx=(18, 8), pady=5, sticky="w")
+        tk.Entry(window, textvariable=values[name], width=58).grid(row=row, column=1, padx=4, pady=5, sticky="ew")
+
+        def choose_directory(key: str = name) -> None:
+            """只选择目录，不创建、不清理、更不读取用户台账。"""
+            chosen = filedialog.askdirectory(parent=window, title=f"选择{dict(labels)[key]}", initialdir=values[key].get())
+            if chosen:
+                values[key].set(chosen)
+
+        tk.Button(window, text="选择…", command=choose_directory).grid(row=row, column=2, padx=(6, 18), pady=5)
+
+    def install_from_window() -> None:
+        """将用户明确选定的位置交给唯一的安装实现，失败时不关闭窗口。"""
+        program_root = Path(values["program"].get().strip()).expanduser()
+        data_root = Path(values["data"].get().strip()).expanduser()
+        config_root = Path(values["config"].get().strip()).expanduser()
+        if not all(str(path) and str(path) != "." for path in (program_root, data_root, config_root)):
+            messagebox.showerror(PRODUCT_NAME, "程序目录、数据目录和配置目录均不能为空。", parent=window)
+            return
+        try:
+            result = install_release(selected_payload, program_root, data_root, config_root)
+        except Exception as error:
+            messagebox.showerror(PRODUCT_NAME, f"安装未完成：{error}\n\n已有数据库和数据目录未被覆盖。", parent=window)
+            return
+        messagebox.showinfo(
+            PRODUCT_NAME,
+            f"安装完成，版本：{result['version']}\n\n"
+            "请通过桌面或开始菜单中的“科技项目台账”启动。\n"
+            "需要升级时，使用同一位置中的“科技项目台账 - 更新”。",
+            parent=window,
+        )
+        window.destroy()
+
+    tk.Button(window, text="开始安装", command=install_from_window, width=16).grid(
+        row=5, column=1, padx=4, pady=(16, 18), sticky="e"
+    )
+    tk.Button(window, text="取消", command=window.destroy, width=10).grid(
+        row=5, column=2, padx=(6, 18), pady=(16, 18)
+    )
+    window.mainloop()
+    return 0
+
+
 def default_user_root(local_app_data: str | None = None) -> Path:
     """取得建议目录；安装时用户可改为任意盘符，绝不硬编码 C 盘。"""
     value = local_app_data or os.environ.get("LOCALAPPDATA")
@@ -219,7 +312,11 @@ def diagnose(program_root: Path, data_root: Path) -> dict[str, str]:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    """分流双击图形安装与维护命令行；无桌面环境时不执行静默安装。"""
+    command_line = sys.argv[1:] if argv is None else argv
+    if not command_line:
+        return launch_install_gui()
     parser = argparse.ArgumentParser(description="科技项目台账当前用户安装器")
     parser.add_argument("command", choices=("install", "uninstall", "diagnose"), nargs="?", default="install")
     suggested_root = default_user_root()
@@ -228,7 +325,7 @@ def main() -> int:
     parser.add_argument("--config-root", type=Path, default=suggested_root / "config", help="本机配置目录，位于程序目录之外")
     parser.add_argument("--version")
     parser.add_argument("--manifest-url", help="Gitee 发布清单 HTTPS 地址，用于安装版人工更新")
-    args = parser.parse_args()
+    args = parser.parse_args(command_line)
     if args.command == "install":
         result = install_release(release_root() / "payload", args.program_root, args.data_root, args.config_root, manifest_url=args.manifest_url)
     elif args.command == "uninstall":
