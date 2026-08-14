@@ -212,7 +212,11 @@ function renderProjectTable(list) {
 /* ---------- 项目详情 ---------- */
 async function showProjectDetail(id) {
   const p = await api("/projects/" + id);
-  const fundSum = (p.fundings || []).reduce((s, f) => s + (f.amount || 0), 0);
+  // 资金口径必须并列展示：页面不再把所有资金笼统称为“已到位”。
+  const plannedTotal = (p.fundings || []).filter(f => f.plan_date).reduce((s, f) => s + (f.amount || 0), 0);
+  const disbursedTotal = (p.fundings || []).filter(f => ["已拨付", "已到账"].includes(f.status)).reduce((s, f) => s + (f.amount || 0), 0);
+  const receivedTotal = (p.fundings || []).filter(f => f.status === "已到账").reduce((s, f) => s + (f.amount || 0), 0);
+  const pendingTotal = (p.fundings || []).filter(f => !["已拨付", "已到账"].includes(f.status)).reduce((s, f) => s + (f.amount || 0), 0);
   const bySource = {};
   (p.fundings || []).forEach(f => { bySource[f.source_type] = (bySource[f.source_type] || 0) + (f.amount || 0); });
   const sumUp = bySource["上级拨付"] || 0, sumMatch = bySource["本级配套"] || 0, sumSelf = bySource["本级自付"] || 0;
@@ -238,10 +242,17 @@ async function showProjectDetail(id) {
           <button class="small" onclick="document.getElementById('project-detail').innerHTML=''">收起</button>
         </div>
       </div>
+      <div class="detail-grid fact-grid" aria-label="项目资金事实">
+        ${kv("项目总金额", fmtMoney(p.total_amount) + " 万元")}
+        ${kv("计划拨付", fmtMoney(plannedTotal) + " 万元")}
+        ${kv("已拨付", fmtMoney(disbursedTotal) + " 万元")}
+        ${kv("已到账", fmtMoney(receivedTotal) + " 万元")}
+        ${kv("待拨", fmtMoney(pendingTotal) + " 万元")}
+        ${kv("资金勾稽", checkIssues.length ? "存在差异" : "一致")}
+      </div>
       <div class="detail-grid">
         ${kv("项目编号", p.project_no)}${kv("层级", p.level)}${kv("类型", p.category)}
-        ${kv("当前阶段", stageBadge(p.stage))}${kv("总金额", fmtMoney(p.total_amount) + " 万元")}
-        ${kv("已到位", fmtMoney(fundSum) + " 万元")}${kv("配套比例", p.match_ratio == null ? "—" : p.match_ratio + " : 1")}
+        ${kv("当前阶段", stageBadge(p.stage))}${kv("配套比例", p.match_ratio == null ? "—" : p.match_ratio + " : 1")}
         ${kv("起止时间", (p.start_date || "—") + " ~ " + (p.end_date || "—"))}
         ${kv("负责人", p.leader)}${kv("联系人手机", p.contact_phone)}
         ${kv("备注", p.note, true)}
@@ -255,7 +266,7 @@ async function showProjectDetail(id) {
       ${checkIssues.length
         ? `<div class="fund-check warn"><b>⚠ ${checkIssues.join("；")}</b></div>`
         : `<div class="fund-check ok">✅ 资金勾稽一致：上级 ${fmtMoney(sumUp)} + 配套 ${fmtMoney(sumMatch)} + 自付 ${fmtMoney(sumSelf)} = ${fmtMoney(sumUp + sumMatch + sumSelf)}</div>`}
-      <div class="sub-title">资金明细（已到位 ${fmtMoney(fundSum)} / 总 ${fmtMoney(p.total_amount)} 万元）</div>
+      <div class="sub-title">资金明细（计划 ${fmtMoney(plannedTotal)} / 已拨 ${fmtMoney(disbursedTotal)} / 已到账 ${fmtMoney(receivedTotal)} 万元）</div>
       <table class="sub-table">
         <thead><tr><th>来源</th><th>金额(万)</th><th>批次</th><th>应拨</th><th>实拨</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>
@@ -453,11 +464,11 @@ async function loadDashboard() {
   const d = await api("/dashboard");
   const cards = [
     { k: "项目总数", v: d.project_count },
-    { k: "企业总数", v: d.enterprise_count },
-    { k: "已拨资金", v: fmtMoney(d.funded_total) + " 万" },
-    { k: "应拨合计", v: fmtMoney(d.plan_total) + " 万" },
+    { k: "承担企业", v: d.enterprise_count },
+    { k: "已拨付资金", v: fmtMoney(d.funded_total) + " 万" },
+    { k: "计划拨付", v: fmtMoney(d.plan_total) + " 万" },
     { k: "逾期节点", v: d.overdue_nodes, warn: d.overdue_nodes > 0 },
-    { k: "30天内到期", v: d.due30_nodes, warn: d.due30_nodes > 0 },
+    { k: "30 天内到期", v: d.due30_nodes, warn: d.due30_nodes > 0 },
     { k: "该拨未拨", v: d.overdue_funding_count + " 笔", warn: d.overdue_funding_count > 0 },
   ];
   $("#dash-cards").innerHTML = cards.map(c => `
@@ -506,6 +517,13 @@ function gotoProject(id) {
   $("#tab-projects").classList.add("active");
   showProjectDetail(id);
 }
+
+// 工作台固定入口不依赖卡片悬停，键盘亦可直接触发。
+$("#btn-hero-project").addEventListener("click", () => openProjectModal());
+$("#btn-hero-refresh").addEventListener("click", async () => {
+  try { await loadDashboard(); toast("工作台数据已刷新"); }
+  catch (e) { toast("刷新失败：" + e.message, "err"); }
+});
 
 /* ---------- 提醒 ---------- */
 async function loadReminders() {

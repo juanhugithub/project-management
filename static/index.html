@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header>
-    <div class="brand">📋 科技项目全生命周期台账</div>
+  <header class="site-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">台</span><span>科技项目台账</span><small>全生命周期管理</small></div>
     <nav>
       <button data-tab="dashboard" class="tab-btn active">🏠 工作台</button>
       <button data-tab="projects" class="tab-btn">项目总览</button>
@@ -22,6 +22,17 @@
   <main>
     <!-- ===== 工作台（默认页） ===== -->
     <section id="tab-dashboard" class="tab active">
+      <div class="workspace-hero">
+        <div>
+          <p class="eyebrow">OVERVIEW / 工作台</p>
+          <h1>项目运行概览</h1>
+          <p class="hero-note">关键资金与风险均按当前台账事实展示。</p>
+        </div>
+        <div class="hero-actions" aria-label="常用操作">
+          <button id="btn-hero-project" class="primary">新增项目</button>
+          <button id="btn-hero-refresh" class="ghost">刷新数据</button>
+        </div>
+      </div>
       <div id="dash-cards" class="dash-cards"></div>
       <div class="dash-cols">
         <div class="dash-panel">
@@ -65,7 +76,7 @@
           <thead>
             <tr>
               <th>项目名称</th><th>编号/文号</th><th>层级</th><th>类型</th>
-              <th>承担企业</th><th>总金额(万)</th><th>已到位(万)</th><th>阶段</th><th>操作</th>
+              <th>承担企业</th><th>总金额(万)</th><th>已拨付(万)</th><th>阶段</th><th>操作</th>
             </tr>
           </thead>
           <tbody></tbody>
