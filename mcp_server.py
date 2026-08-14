@@ -14,6 +14,7 @@ import sqlite3
 
 from mcp.server.fastmcp import FastMCP
 from ledger import queries
+from mcp_contract import envelope
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "project.db")
@@ -51,6 +52,29 @@ def project_visibility_sql(alias, years):
         clause += f" AND ({alias}.start_date IS NULL OR substr({alias}.start_date,1,4) NOT IN ({placeholders}))"
         params.extend(sorted(years))
     return clause, params
+
+
+def visible_project_rows(conn, filters=None):
+    """按 G8 数据集筛选项目，所有高阶工具共用既有 MCP 的可见性规则。"""
+    filters = filters or {}
+    clause, params = project_visibility_sql("p", archived_years(conn))
+    where = [clause]
+    if filters.get("district"):
+        where.append("e.district=?")
+        params.append(filters["district"])
+    if filters.get("level"):
+        where.append("p.level=?")
+        params.append(filters["level"])
+    if filters.get("year"):
+        where.append("substr(p.start_date,1,4)=?")
+        params.append(str(filters["year"]))
+    sql = (
+        "SELECT p.*, e.name AS enterprise_name, e.credit_code AS enterprise_credit_code, "
+        "e.district AS enterprise_district "
+        "FROM project p JOIN enterprise e ON e.id=p.enterprise_id AND e.is_deleted=0 "
+        "WHERE " + " AND ".join(where) + " ORDER BY p.id"
+    )
+    return rows_to_list(conn.execute(sql, params).fetchall())
 
 
 # ---------------------------------------------------------------- 项目
@@ -270,6 +294,110 @@ def get_funding_check() -> list:
             d["ok"] = len(issues) == 0
             out.append(d)
         return out
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------- G8 版本化业务数据集
+@mcp.tool()
+def get_project_fact_sheet(project_id: int) -> dict:
+    """返回单个可见项目的事实包，供 Agent 起草说明、通知或表格，不返回写入能力。"""
+    conn = get_db()
+    try:
+        project = queries.project_detail(conn, project_id)
+        if not project or is_archived_project(project, archived_years(conn)):
+            return envelope({"found": False, "project_id": project_id}, {"project_id": project_id})
+        return envelope({"found": True, "project": project}, {"project_id": project_id})
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+def list_acceptance_risks(days: int = 90, district: str = None) -> dict:
+    """列出未来指定天数内或已逾期的未完成验收/结题节点，按项目形成验收风险数据集。"""
+    conn = get_db()
+    try:
+        filters = {"days": days, "district": district}
+        clause, params = project_visibility_sql("p", archived_years(conn))
+        where = ["n.is_deleted=0", "n.status!='已完成'", "n.node_type IN ('验收','结题')", clause,
+                 "(julianday(n.plan_date)-julianday(date('now','localtime'))) <= ?"]
+        params.append(days)
+        if district:
+            where.append("e.district=?")
+            params.append(district)
+        rows = rows_to_list(conn.execute(
+            "SELECT n.id AS node_id,n.project_id,n.node_type,n.plan_date,n.status,"
+            "p.name AS project_name,p.project_no,p.stage,e.name AS enterprise_name,e.district,"
+            "(julianday(n.plan_date)-julianday(date('now','localtime'))) AS days_left "
+            "FROM node n JOIN project p ON p.id=n.project_id JOIN enterprise e ON e.id=p.enterprise_id "
+            "WHERE " + " AND ".join(where) + " ORDER BY n.plan_date,n.id", params).fetchall())
+        for row in rows:
+            row["risk_level"] = "逾期" if row["days_left"] < 0 else ("临期" if row["days_left"] <= 30 else "关注")
+        return envelope({"items": rows, "count": len(rows)}, filters)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+def get_funding_execution_dataset(year: str = None, district: str = None, level: str = None) -> dict:
+    """按项目返回资金执行数据集与合计，适用于季度资金执行表等固定办公任务。"""
+    conn = get_db()
+    try:
+        filters = {"year": year, "district": district, "level": level}
+        projects = visible_project_rows(conn, filters)
+        rows = []
+        for project in projects:
+            totals = queries.project_totals(conn, project["id"])
+            rows.append({
+                "project_id": project["id"], "project_no": project["project_no"], "project_name": project["name"],
+                "enterprise_name": project["enterprise_name"], "district": project["enterprise_district"],
+                "level": project["level"], "stage": project["stage"], "total_amount": project["total_amount"], **totals,
+            })
+        summary = {key: round(sum((row.get(key) or 0) for row in rows), 2)
+                   for key in ("total_amount", "planned_total", "disbursed_total", "received_total")}
+        return envelope({"items": rows, "summary": summary, "count": len(rows)}, filters)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+def list_projects_missing_identity(district: str = None) -> dict:
+    """列出显式人工编号待补或缺失项目编号的可见项目，供治理催补而非自动编造编号。"""
+    conn = get_db()
+    try:
+        filters = {"district": district}
+        projects = visible_project_rows(conn, filters)
+        items = [project for project in projects if project.get("identity_status") == "人工编号待补" or not project.get("project_no")]
+        return envelope({"items": items, "count": len(items)}, filters)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+def list_composite_risks(days: int = 90, district: str = None) -> dict:
+    """汇总验收临期、编号待补与资金勾稽不一致三类确定性风险，并明确每项触发原因。"""
+    conn = get_db()
+    try:
+        filters = {"days": days, "district": district}
+        projects = visible_project_rows(conn, {"district": district})
+        acceptance = list_acceptance_risks(days, district)["data"]["items"]
+        acceptance_ids = {item["project_id"] for item in acceptance}
+        checks = {item["id"]: item for item in get_funding_check()}
+        items = []
+        for project in projects:
+            reasons = []
+            if project["id"] in acceptance_ids:
+                reasons.append("存在验收或结题临期/逾期节点")
+            if project.get("identity_status") == "人工编号待补" or not project.get("project_no"):
+                reasons.append("项目编号待补")
+            check = checks.get(project["id"])
+            if check and not check["ok"]:
+                reasons.extend(check["issues"])
+            if reasons:
+                items.append({"project_id": project["id"], "project_no": project["project_no"],
+                              "project_name": project["name"], "enterprise_name": project["enterprise_name"],
+                              "district": project["enterprise_district"], "stage": project["stage"], "reasons": reasons})
+        return envelope({"items": items, "count": len(items)}, filters)
     finally:
         conn.close()
 

@@ -55,11 +55,13 @@ def test_g7_mcp_registers_read_only_query_tools_only(tmp_db, monkeypatch):
     """工具名称不含业务写动词，避免 AI 侧获得隐式增删改能力。"""
     _seed(tmp_db, monkeypatch)
     tools = set(mcp_server.mcp._tool_manager._tools)
-    assert tools == {
+    historical_tools = {
         'list_projects', 'get_project', 'list_enterprises', 'get_enterprise',
         'list_fundings', 'list_nodes', 'get_reminders', 'get_stats',
         'get_funding_check', 'search',
     }
+    # G8 可以增加版本化只读数据集；G7 的既有发现面不能无声消失。
+    assert historical_tools <= tools
     assert not {name for name in tools if any(word in name for word in ('create', 'update', 'delete', 'restore', 'import'))}
 
 
