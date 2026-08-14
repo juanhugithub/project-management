@@ -59,11 +59,26 @@ def ensure_data_directories(data_root: Path) -> None:
         (data_root / name).mkdir(parents=True, exist_ok=True)
 
 
-def write_location_config(config_root: Path, program_root: Path, data_root: Path) -> Path:
+def write_location_config(config_root: Path, program_root: Path, data_root: Path, version: str, manifest_url: str | None = None) -> Path:
     """把用户选择保存到程序目录之外，供更新器与卸载入口查阅。"""
     config_root.mkdir(parents=True, exist_ok=True)
     location_file = config_root / "install_locations.json"
+    current_file = config_root / "current-install.json"
+    previous = {}
+    if current_file.exists():
+        try:
+            previous = json.loads(current_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            previous = {}
+    # install_locations 保持为稳定的路径契约；当前版本和更新地址单独保存，避免
+    # 旧版诊断程序误把版本信息当作路径字段处理。
     location_file.write_text(json.dumps({"program_root": str(program_root), "data_root": str(data_root)}, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = {"current_version": version}
+    if manifest_url:
+        payload["update_manifest_url"] = manifest_url
+    elif isinstance(previous.get("update_manifest_url"), str):
+        payload["update_manifest_url"] = previous["update_manifest_url"]
+    current_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     # runtime_paths 模块只认识 ledger_home；此文件与安装位置记录并列且不在程序目录内。
     (config_root / "runtime-paths.json").write_text(json.dumps({"ledger_home": str(data_root)}, ensure_ascii=False, indent=2), encoding="utf-8")
     return location_file
@@ -103,6 +118,7 @@ def create_launch_entries(program_root: Path, data_root: Path, config_root: Path
     app_executable = program / "项目台账" / "项目台账.exe"
     backup_executable = program / "台账备份" / "台账备份.exe"
     installer_executable = program / "台账安装器.exe"
+    updater_executable = program / "台账更新器.exe"
     runtime_config = config_root / "runtime-paths.json"
     environment = f'set "LEDGER_PATHS_CONFIG={runtime_config}" && '
     launchers = {
@@ -110,21 +126,24 @@ def create_launch_entries(program_root: Path, data_root: Path, config_root: Path
         "备份": launcher_dir / "备份科技项目台账.cmd",
         "诊断": launcher_dir / "诊断科技项目台账.cmd",
         "卸载": launcher_dir / "卸载科技项目台账.cmd",
+        "更新": launcher_dir / "更新科技项目台账.cmd",
     }
     write_launcher(launchers["启动"], environment + f'start "" "{app_executable}"')
     write_launcher(launchers["备份"], environment + f'"{backup_executable}"')
     write_launcher(launchers["诊断"], environment + f'"{installer_executable}" diagnose --program-root "{program_root}" --data-root "{data_root}"')
     write_launcher(launchers["卸载"], environment + f'"{installer_executable}" uninstall --program-root "{program_root}" --version "{version}"')
+    write_launcher(launchers["更新"], environment + f'"{updater_executable}" update --program-root "{program_root}" --data-root "{data_root}" --config-root "{config_root}"')
     for folder in (desktop, start_menu):
         if folder is not None:
             create_shortcut(folder / f"{PRODUCT_NAME}.lnk", launchers["启动"])
             create_shortcut(folder / f"{PRODUCT_NAME} - 备份.lnk", launchers["备份"])
             create_shortcut(folder / f"{PRODUCT_NAME} - 诊断.lnk", launchers["诊断"])
             create_shortcut(folder / f"{PRODUCT_NAME} - 卸载.lnk", launchers["卸载"])
+            create_shortcut(folder / f"{PRODUCT_NAME} - 更新.lnk", launchers["更新"])
     return launchers
 
 
-def install_release(payload: Path, program_root: Path, data_root: Path, config_root: Path, desktop: Path | None = None, start_menu: Path | None = None) -> dict[str, Path | str]:
+def install_release(payload: Path, program_root: Path, data_root: Path, config_root: Path, desktop: Path | None = None, start_menu: Path | None = None, manifest_url: str | None = None) -> dict[str, Path | str]:
     """安装一个新程序版本，遇到同版本已存在时明确拒绝覆盖。"""
     version = read_payload_version(payload)
     source_program = payload / "项目台账"
@@ -134,22 +153,48 @@ def install_release(payload: Path, program_root: Path, data_root: Path, config_r
     if target.exists():
         raise RuntimeError(f"版本 {version} 已安装，安装器不会覆盖已有程序目录")
     ensure_data_directories(data_root)
-    location_file = write_location_config(config_root, program_root, data_root)
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source_program, target / "项目台账")
-    for name in ("台账备份",):
-        source = payload / name
-        if source.is_dir():
-            shutil.copytree(source, target / name)
-        elif source.is_file():
-            shutil.copy2(source, target / name)
-    # 独立安装器运行时从自身可执行文件复制，源码测试则可由 payload 提供样例文件。
-    own_installer = payload / "台账安装器.exe"
-    if not own_installer.is_file() and getattr(sys, "frozen", False):
-        own_installer = Path(sys.executable)
-    if own_installer.is_file():
-        shutil.copy2(own_installer, target / "台账安装器.exe")
-    launchers = create_launch_entries(program_root, data_root, config_root, version, desktop, start_menu)
+    staging = program_root / f".installing-{version}"
+    if staging.exists():
+        raise RuntimeError(f"检测到未完成的安装目录：{staging}；请先由维护人员检查后删除")
+    config_files = tuple(config_root / name for name in ("install_locations.json", "current-install.json", "runtime-paths.json"))
+    previous_config = {path: path.read_bytes() if path.exists() else None for path in config_files}
+    try:
+        # 先在同一程序根目录完整复制；只有复制成功才把新版本变成可见版本目录。
+        shutil.copytree(source_program, staging / "项目台账")
+        for name in ("台账备份",):
+            source = payload / name
+            if source.is_dir():
+                shutil.copytree(source, staging / name)
+            elif source.is_file():
+                shutil.copy2(source, staging / name)
+        # 独立安装器运行时从自身可执行文件复制，源码测试则可由 payload 提供样例文件。
+        own_installer = payload / "台账安装器.exe"
+        if not own_installer.is_file() and getattr(sys, "frozen", False):
+            own_installer = Path(sys.executable)
+        if own_installer.is_file():
+            shutil.copy2(own_installer, staging / "台账安装器.exe")
+        updater = payload / "台账更新器.exe"
+        if updater.is_file():
+            shutil.copy2(updater, staging / "台账更新器.exe")
+        staging.replace(target)
+        location_file = write_location_config(config_root, program_root, data_root, version, manifest_url)
+        launchers = create_launch_entries(program_root, data_root, config_root, version, desktop, start_menu)
+    except Exception:
+        # 新版本尚未成为当前版本时仅清理其程序文件；不删除任何用户数据目录。
+        if staging.exists():
+            shutil.rmtree(staging)
+        if target.exists():
+            shutil.rmtree(target)
+        # 启动入口创建失败时，恢复旧启动版本记录，避免用户入口指向半完成版本。
+        for path, content in previous_config.items():
+            if content is None:
+                if path.exists():
+                    path.unlink()
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+        raise
     return {"version": version, "program": target, "location_config": location_file, **launchers}
 
 
@@ -182,9 +227,10 @@ def main() -> int:
     parser.add_argument("--data-root", type=Path, default=suggested_root / "user-data", help="台账数据根目录，可选择任意盘符")
     parser.add_argument("--config-root", type=Path, default=suggested_root / "config", help="本机配置目录，位于程序目录之外")
     parser.add_argument("--version")
+    parser.add_argument("--manifest-url", help="Gitee 发布清单 HTTPS 地址，用于安装版人工更新")
     args = parser.parse_args()
     if args.command == "install":
-        result = install_release(release_root() / "payload", args.program_root, args.data_root, args.config_root)
+        result = install_release(release_root() / "payload", args.program_root, args.data_root, args.config_root, manifest_url=args.manifest_url)
     elif args.command == "uninstall":
         if not args.version:
             parser.error("卸载必须指定 --version")
