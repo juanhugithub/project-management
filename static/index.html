@@ -16,10 +16,13 @@
       <button data-tab="enterprises" class="tab-btn">企业</button>
       <button data-tab="stats" class="tab-btn">统计</button>
       <button data-tab="dict" class="tab-btn">配置</button>
+      <button data-tab="guide" class="tab-btn">使用助手</button>
+      <button data-tab="usage" class="tab-btn">使用分析</button>
     </nav>
   </header>
 
   <main>
+    <div id="update-banner" class="update-banner hidden" role="status"></div>
     <!-- ===== 工作台（默认页） ===== -->
     <section id="tab-dashboard" class="tab active">
       <div class="workspace-hero">
@@ -155,6 +158,87 @@
     <section id="tab-dict" class="tab">
       <div class="notice">⚙️ 配置管理：政策调整时可自助「新增」或「停用」类别。停用后不再出现在下拉框，历史数据不受影响。</div>
       <div id="dict-view"></div>
+    </section>
+
+    <!-- ===== 使用助手 ===== -->
+    <section id="tab-guide" class="tab guide-page">
+      <div class="guide-hero">
+        <div>
+          <p class="eyebrow">HELP DESK / 使用助手</p>
+          <h1>把台账用顺，<br>再让 Agent 帮你做事</h1>
+          <p class="hero-note">这里是给当前使用者看的操作手册。照着步骤做，不需要懂数据库或编程。</p>
+        </div>
+        <div class="guide-stamp"><span>本机版</span><b>数据在你的电脑</b><small>公网访问暂未启用</small></div>
+      </div>
+
+      <div class="guide-flow" aria-label="台账工作流程">
+        <div><b>01</b><strong>录入事实</strong><span>项目、企业、资金、节点</span></div>
+        <i>→</i><div><b>02</b><strong>核对进度</strong><span>阶段、拨付、提醒、统计</span></div>
+        <i>→</i><div><b>03</b><strong>交给 Agent</strong><span>读数据、填表、写报告</span></div>
+      </div>
+
+      <div class="guide-grid">
+        <article class="guide-section guide-wide">
+          <div class="guide-kicker">先记住三件事</div>
+          <h2>这套软件到底管什么？</h2>
+          <div class="guide-facts">
+            <div><span class="guide-icon">一</span><b>一条项目主线</b><p>从申报、立项、实施到验收和完结，阶段按规则流转。中止只能从立项后到验收前进入，进入后不能恢复。</p></div>
+            <div><span class="guide-icon">钱</span><b>一笔资金记录</b><p>一条记录同时记录金额、应拨时间、实拨时间和状态，不拆成“计划表”和“实际表”。</p></div>
+            <div><span class="guide-icon">码</span><b>项目唯一识别</b><p>项目编号/文号 + 企业统一社会信用代码共同识别项目，避免同名项目串在一起。</p></div>
+          </div>
+        </article>
+
+        <article class="guide-section">
+          <div class="guide-kicker">第一次使用</div><h2>四步开始</h2>
+          <ol class="guide-steps"><li><b>先录企业</b><span>进入“企业”→“新增企业”，先填名称和统一社会信用代码。</span></li><li><b>再录项目</b><span>进入“项目总览”→“新增项目”，选择承担企业，填项目编号/文号。</span></li><li><b>补资金节点</b><span>打开项目详情，在“资金明细”和“项目节点”区域添加记录。</span></li><li><b>看工作台</b><span>回到“工作台”，查看待办节点、该拨未拨和资金事实。</span></li></ol>
+        </article>
+
+        <article class="guide-section">
+          <div class="guide-kicker">日常操作</div><h2>每天只做这些</h2>
+          <ul class="guide-list"><li><b>有新项目：</b>新增项目，不要用备注代替项目编号。</li><li><b>收到拨款：</b>打开原资金记录，填写实拨时间并调整状态。</li><li><b>节点完成：</b>填写实际完成时间，将节点设为“已完成”。</li><li><b>要报表：</b>先用“统计”核对，再导出当前结果。</li><li><b>要批量录入：</b>下载 Excel 模板，填完后走预览和确认。</li></ul>
+        </article>
+
+        <article class="guide-section guide-wide agent-section">
+          <div class="guide-kicker">Agent 对接 · 本机免费版</div>
+          <h2>让电脑上的 Agent 读取台账</h2>
+          <p class="section-lead">当前不需要买服务器、不需要域名。Agent 和台账在同一台电脑上时，使用 MCP 本地连接即可。</p>
+          <div class="agent-layout">
+            <div class="agent-steps"><div class="agent-step"><b>1</b><div><strong>确认本机服务</strong><p>双击启动台账后，浏览器能打开台账页面，就说明本机服务已运行。</p></div></div><div class="agent-step"><b>2</b><div><strong>在 Agent 中添加 MCP</strong><p>找到 Agent 的“工具 / MCP / 外部工具”设置，新增一个本地命令。</p></div></div><div class="agent-step"><b>3</b><div><strong>粘贴配置并测试</strong><p>保存后让 Agent 调用“查询项目列表”。能返回项目数据，就接通了。</p></div></div></div>
+            <div class="code-card"><div class="code-head"><span>本机 MCP 配置</span><button class="copy-btn" data-copy-target="agent-config">复制</button></div><pre id="agent-config">{
+  "科技项目台账": {
+    "command": "python",
+    "args": ["E:/Reasonix WorkSpace/科技项目台账/mcp_server.py"]
+  }
+}</pre><small>安装版用户把 command 改为实际安装目录中的 MCP 启动程序；源码版直接使用上方配置。</small></div>
+          </div>
+          <div class="guide-note"><b>能让 Agent 做什么？</b><span>读取项目事实、生成统计数据集、按模板整理表格、起草报告、把外部表头翻译成标准字段。正式台账写入仍需你在网页中确认。</span></div>
+        </article>
+
+        <article class="guide-section">
+          <div class="guide-kicker">表格翻译</div><h2>字段对不上怎么办？</h2>
+          <p class="section-lead">不要让 Agent 猜。先让它读取标准字段字典，再确认映射。</p>
+          <div class="mapping-demo"><span>“批准文号”</span><i>→</i><strong>project.project_no</strong><small>标准字段：项目编号/文号</small></div>
+          <div class="mapping-demo"><span>“承担单位”</span><i>→</i><strong>enterprise.name</strong><small>标准字段：企业名称</small></div>
+        </article>
+
+        <article class="guide-section">
+          <div class="guide-kicker">安全与边界</div><h2>哪些事仍由你确认？</h2>
+          <ul class="guide-list"><li>Agent 只读本地台账，不直接改正式数据。</li><li>Excel 导入必须先预览，再由人工确认提交。</li><li>数据库、备份和导入原件都保存在你选择的本机目录。</li><li>电脑关机时，本地 Agent 和手机都不能读取这台电脑的数据。</li></ul>
+        </article>
+
+        <article class="guide-section guide-wide faq-section">
+          <div class="guide-kicker">遇到问题</div><h2>先看这里</h2>
+          <details><summary>Agent 提示找不到项目</summary><p>确认 Agent 和台账运行在同一台电脑，并检查 MCP 配置中的路径是否真实存在。安装版不要照抄源码路径。</p></details>
+          <details><summary>手机现在能直接连接吗？</summary><p>暂时不能。当前版本不启用公网隧道，手机只能在以后配置 HTTPS 反向隧道后访问。</p></details>
+          <details><summary>我改了电脑或数据库路径怎么办？</summary><p>使用安装器的“配置目录”保存路径，不要手动移动数据库文件。修改后重新启动台账即可。</p></details>
+        </article>
+      </div>
+    </section>
+
+    <section id="tab-usage" class="tab usage-page">
+      <div class="workspace-hero"><div><p class="eyebrow">LOCAL INSIGHTS / 使用分析</p><h1>看看你真正用到了什么</h1><p class="hero-note">统计只保存在本机，用来决定下一轮改进重点。</p></div><button id="btn-usage-refresh" class="ghost">刷新统计</button></div>
+      <div class="usage-grid"><div class="usage-panel"><h2>模块使用次数</h2><div id="usage-modules" class="usage-bars"></div></div><div class="usage-panel"><h2>最近常用动作</h2><div id="usage-actions" class="usage-bars"></div></div></div>
+      <p class="usage-footnote">埋点不记录项目名称、金额、Token、IP 或表格内容。删除运行目录中的 <code>logs/usage_events.jsonl</code> 即可清空统计。</p>
     </section>
   </main>
 

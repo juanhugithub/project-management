@@ -9,6 +9,7 @@ const FUND_STATUS = ["未拨付", "已拨付", "已到账"];
 const NODE_STATUS = ["待办", "已完成", "已逾期"];
 
 const state = { dict: {}, enterprises: [], filters: {}, archivedYears: [] };
+function trackUsage(module, action = "view") { fetch("/api/usage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module, action }) }).catch(() => {}); }
 
 function showLogin(message = "请登录后继续使用台账。") {
   $("#auth-panel").classList.remove("hidden");
@@ -150,8 +151,38 @@ $$(".tab-btn").forEach(btn => {
     if (btn.dataset.tab === "dashboard") loadDashboard();
     if (btn.dataset.tab === "reminders") loadReminders();
     if (btn.dataset.tab === "stats") loadStats();
+    trackUsage(btn.dataset.tab, "view");
+    if (btn.dataset.tab === "usage") loadUsage();
   });
 });
+
+async function loadUsage() {
+  const data = await api("/usage");
+  const render = (items, target) => {
+    const el = $(target);
+    if (!items.length) { el.innerHTML = '<div class="usage-empty">还没有使用记录</div>'; return; }
+    const max = Math.max(...items.map(x => x.count));
+    el.innerHTML = items.map(item => `<div class="usage-row"><span title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span><span class="bar"><i style="width:${Math.max(2, item.count / max * 100)}%"></i></span><b>${item.count}</b></div>`).join("");
+  };
+  render(data.modules || [], "#usage-modules"); render(data.actions || [], "#usage-actions");
+}
+
+async function checkForUpdate() {
+  const banner = $("#update-banner");
+  try {
+    const result = await api("/update");
+    if (!result.update_available) { banner.classList.add("hidden"); return; }
+    banner.innerHTML = `<span><b>发现新版本 ${escapeHtml(result.release_version)}</b>${(result.notes || []).length ? "：" + escapeHtml(result.notes.join("；")) : ""}</span><button id="btn-apply-update" class="primary small">下载并更新</button>`;
+    banner.classList.remove("hidden");
+    $("#btn-apply-update").addEventListener("click", async () => {
+      const button = $("#btn-apply-update"); button.disabled = true; button.textContent = "正在下载并安装…";
+      try { await api("/update/apply", "POST", {}); banner.innerHTML = "更新完成，正在重新启动…"; setTimeout(() => location.reload(), 5000); }
+      catch (error) { button.disabled = false; button.textContent = "重试更新"; toast(error.message, "err"); }
+    });
+  } catch (error) {
+    if (error.status !== 409) console.warn("更新检查失败", error.message);
+  }
+}
 
 /* ---------- 字典与基础数据加载 ---------- */
 async function loadDict() {
@@ -635,11 +666,14 @@ async function renderDict() {
   let html = "";
   for (const t of types) {
     const items = await api("/dict?type=" + t + "&all=1");
+    const activeItems = items.filter(x => x.is_active);
+    const inactiveItems = items.filter(x => !x.is_active);
     html += `<div class="dict-group">
       <h4>${titles[t] || t}</h4>
-      <div class="dict-tags">
-        ${items.map(x => `<span class="${x.is_active ? "" : "off"}">${escapeHtml(x.value)}${x.is_active ? "" : "（停用）"}
-          ${x.is_active ? `<button class="small d-off" data-id="${x.id}">停用</button>` : `<button class="small d-on" data-id="${x.id}">启用</button>`}</span>`).join("")}
+      <div class="dict-tags dict-sortable" data-type="${t}">
+        ${activeItems.map(x => `<span class="dict-item" draggable="true" data-id="${x.id}" title="拖动调整顺序"><b class="drag-grip">⋮⋮</b>${escapeHtml(x.value)}
+          <button class="small d-off" data-id="${x.id}">停用</button></span>`).join("")}
+        ${inactiveItems.length ? `<details class="dict-inactive"><summary>已停用 ${inactiveItems.length} 项（展开）</summary><div class="dict-tags">${inactiveItems.map(x => `<span class="off dict-item">${escapeHtml(x.value)}（停用）<button class="small d-on" data-id="${x.id}">启用</button></span>`).join("")}</div></details>` : ""}
         <span class="dict-add"><input data-new-val placeholder="新增取值"><button class="small primary d-add" data-type="${t}">新增</button></span>
       </div>
     </div>`;
@@ -664,6 +698,25 @@ async function renderDict() {
     await api("/dict/" + b.dataset.id, "PUT", { is_active: 1 });
     toast("已启用"); renderDict(); loadDict();
   }));
+  // HTML5 原生拖拽排序：只保存顺序，不改动取值内容和历史业务数据。
+  $("#dict-view").querySelectorAll(".dict-sortable").forEach(list => {
+    let dragging = null;
+    list.querySelectorAll(".dict-item").forEach(item => {
+      item.addEventListener("dragstart", () => { dragging = item; item.classList.add("dragging"); });
+      item.addEventListener("dragend", () => { item.classList.remove("dragging"); dragging = null; });
+      item.addEventListener("dragover", event => {
+        event.preventDefault();
+        if (!dragging || dragging === item) return;
+        const box = item.getBoundingClientRect();
+        list.insertBefore(dragging, event.clientY < box.top + box.height / 2 ? item : item.nextSibling);
+      });
+    });
+    list.addEventListener("drop", async () => {
+      const ordered = Array.from(list.querySelectorAll(":scope > .dict-item"));
+      for (const [index, item] of ordered.entries()) await api("/dict/" + item.dataset.id, "PUT", { sort_order: index + 1 });
+      toast("顺序已保存");
+    });
+  });
   $("#dict-view").querySelectorAll(".d-add").forEach(b => b.addEventListener("click", async () => {
     const input = b.parentElement.querySelector("input");
     const val = (input.value || "").trim();
@@ -908,6 +961,7 @@ $("#btn-st-export").addEventListener("click", exportCSV);
 $("#st-by").addEventListener("change", loadStats);
 $("#rm-days").addEventListener("change", loadReminders);
 $("#btn-rm-refresh").addEventListener("click", loadReminders);
+$("#btn-usage-refresh").addEventListener("click", loadUsage);
 
 $("#auth-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -925,6 +979,21 @@ $("#auth-form").addEventListener("submit", async (event) => {
   }
 });
 
+/* 使用助手中的配置复制：不依赖剪贴板权限时仍给出明确提示。 */
+document.querySelectorAll(".copy-btn").forEach(button => {
+  button.addEventListener("click", async () => {
+    const target = document.getElementById(button.dataset.copyTarget);
+    if (!target) return;
+    try {
+      await navigator.clipboard.writeText(target.textContent);
+      button.textContent = "已复制";
+      setTimeout(() => { button.textContent = "复制"; }, 1600);
+    } catch (e) {
+      toast("浏览器未允许复制，请手动选中配置", "err");
+    }
+  });
+});
+
 /* ---------- 初始化 ---------- */
 async function loadWorkspace() {
   await loadDict();
@@ -933,6 +1002,7 @@ async function loadWorkspace() {
   await loadProjects();
   renderDict();
   await loadDashboard();
+  checkForUpdate();
 }
 
 (async function init() {

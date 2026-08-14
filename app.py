@@ -12,11 +12,16 @@ import sqlite3
 import threading
 import webbrowser
 import datetime
+import sys
+import subprocess
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from ledger.errors import DomainError
 from ledger import queries, services
+from ledger import field_mapping
 from ledger import security
+import usage_tracker
 from runtime_paths import ensure_runtime_layout, get_runtime_paths
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +33,8 @@ SCHEMA_PATH = os.path.join(BASE_DIR, "schema.sql")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 HOST = "127.0.0.1"
 PORT = 8765
+AUTH_ENABLED = os.environ.get("LEDGER_AUTH_ENABLED", "0") == "1"
+INSTALL_CONFIG = os.environ.get("LEDGER_INSTALL_CONFIG", "")
 
 # 各表允许写入的字段（白名单，防注入、防脏数据）
 FIELDS = {
@@ -232,9 +239,20 @@ class Handler(BaseHTTPRequestHandler):
         if resource == "auth":
             self._api_auth(method, parts[1:])
             return
-        self.current_user = self._request_user()
-        if not self.current_user:
+        self.current_user = self._request_user() if AUTH_ENABLED else {"username": "local-user", "role": "admin", "district_scope": None}
+        if AUTH_ENABLED and not self.current_user:
             self._err(401, "请先登录")
+            return
+        if resource == "usage" and method == "POST":
+            body = self._read_body()
+            usage_tracker.record(RUNTIME_PATHS, body.get("module"), body.get("action", "view"))
+            self._ok({"recorded": True})
+            return
+        if resource == "usage" and method == "GET":
+            self._ok(usage_tracker.summary(RUNTIME_PATHS))
+            return
+        if resource == "update":
+            self._api_update(method, parts[1:])
             return
         if self._is_sensitive_action(resource, method, parts[1:]) and not self._require_role("admin"):
             return
@@ -273,6 +291,8 @@ class Handler(BaseHTTPRequestHandler):
             self._api_dashboard(method, parts, qs)
         elif resource == "funding-plan":
             self._api_funding_plan(method, parts, qs)
+        elif resource == "field-mapping":
+            self._api_field_mapping(method, parts, qs)
         elif resource == "config":
             self._api_config(method, parts, qs)
         else:
@@ -289,6 +309,34 @@ class Handler(BaseHTTPRequestHandler):
             self._err(401, "用户名或密码错误")
             return
         self._send(200, {"user": user}, {"Set-Cookie": f"ledger_session={token}; HttpOnly; SameSite=Strict; Path=/"})
+
+    def _api_update(self, method, parts):
+        """网页更新入口：复用安装版更新器，不下载或修改数据库。"""
+        if method != "GET" and not (method == "POST" and parts == ["apply"]):
+            self._err(405, "method not allowed"); return
+        try:
+            import installed_updater
+            config_root = Path(INSTALL_CONFIG).parent if INSTALL_CONFIG else RUNTIME_PATHS.config
+            manifest = os.environ.get("LEDGER_UPDATE_MANIFEST_URL") or installed_updater.configured_manifest_url(config_root)
+            if method == "GET":
+                result = installed_updater.check_installed_update(manifest, config_root)
+                release = result["release"]
+                self._ok({"current_version": result["current_version"], "release_version": release.version,
+                          "update_available": result["update_available"], "notes": list(release.notes)})
+                return
+            install_info = json.loads(Path(INSTALL_CONFIG).read_text(encoding="utf-8"))
+            program_root = Path(install_info["program_root"])
+            data_root = Path(install_info["data_root"])
+            def apply_and_restart():
+                installed_updater.apply_installed_update(manifest, program_root, data_root, config_root)
+                current = json.loads(Path(INSTALL_CONFIG).read_text(encoding="utf-8"))
+                new_exe = Path(current["program_root"]) / current["current_version"] / "项目台账" / "项目台账.exe"
+                subprocess.Popen([str(new_exe), "--resident"], close_fds=True)
+                self.server.shutdown()
+            threading.Thread(target=apply_and_restart, daemon=True).start()
+            self._ok({"started": True})
+        except Exception as error:
+            self._err(409, str(error))
 
     # ---------- 归档工具 ----------
     def _archived_years(self, conn):
@@ -542,6 +590,23 @@ class Handler(BaseHTTPRequestHandler):
             self._err(400, "invalid id")
         finally:
             conn.close()
+
+    def _api_field_mapping(self, method, parts, qs):
+        """提供字段字典、候选映射和已确认行翻译，事实写入仍由人工确认流程完成。"""
+        if not parts or (parts == ["dictionary"] and method != "GET") or (parts != ["dictionary"] and method != "POST"):
+            self._err(405, "method not allowed"); return
+        body = self._read_body()
+        try:
+            if parts == ["dictionary"]:
+                self._ok(field_mapping.standard_fields())
+            elif parts == ["suggest"]:
+                self._ok(field_mapping.suggest_mapping(body.get("headers")))
+            elif parts == ["translate"]:
+                self._ok(field_mapping.translate_rows(body.get("rows"), body.get("mapping")))
+            else:
+                self._err(404, "unknown field mapping action")
+        except field_mapping.FieldMappingError as error:
+            self._err(400, str(error))
 
     # ---------- 提醒 ----------
     def _api_reminders(self, method, parts, qs):
@@ -882,7 +947,7 @@ class Handler(BaseHTTPRequestHandler):
         print(f"[{self.command}] {self.path} " + (fmt % args))
 
 
-def main():
+def main(open_browser=True):
     init_db()
     try:
         import backup
@@ -894,7 +959,8 @@ def main():
     print(f"科技项目台账已启动：{url}")
     print("按 Ctrl+C 停止")
     # 自动打开浏览器（延迟，避免和启动抢）
-    threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+    if open_browser:
+        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -902,4 +968,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(open_browser="--resident" not in sys.argv)

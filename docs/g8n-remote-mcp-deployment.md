@@ -18,6 +18,13 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## 本机启动
 
+### 配置文件
+
+服务默认读取运行目录 `config/remote-mcp.json`。也可以通过 `REMOTE_MCP_CONFIG` 指定其他路径。
+配置文件字段名使用去掉 `REMOTE_MCP_` 前缀后的名称：`bind`、`port`、`public_host`、`tls_terminated`、`api_token`、`audit_log`。环境变量优先级高于配置文件，便于临时切换；Token 不要提交到 Gitee。
+
+可复制 `templates/remote-mcp.json.example` 到运行目录后修改。
+
 仅供同机 Agent 使用时，可不设置 Token：
 
 ```text

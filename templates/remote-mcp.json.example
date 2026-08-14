@@ -1,0 +1,8 @@
+{
+  "bind": "127.0.0.1",
+  "port": 8001,
+  "public_host": "mcp.example.cn",
+  "tls_terminated": 1,
+  "api_token": "在本机生成后填写，不要提交到 Gitee",
+  "audit_log": ""
+}

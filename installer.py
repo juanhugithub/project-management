@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import subprocess
+import winreg
 import sys
 import tempfile
 from pathlib import Path
@@ -213,7 +214,8 @@ def create_launch_entries(program_root: Path, data_root: Path, config_root: Path
     installer_executable = program / "台账安装器.exe"
     updater_executable = program / "台账更新器.exe"
     runtime_config = config_root / "runtime-paths.json"
-    environment = f'set "LEDGER_PATHS_CONFIG={runtime_config}" && '
+    install_config = config_root / "current-install.json"
+    environment = f'set "LEDGER_PATHS_CONFIG={runtime_config}" && set "LEDGER_INSTALL_CONFIG={install_config}" && '
     launchers = {
         "启动": launcher_dir / "启动科技项目台账.cmd",
         "备份": launcher_dir / "备份科技项目台账.cmd",
@@ -222,6 +224,9 @@ def create_launch_entries(program_root: Path, data_root: Path, config_root: Path
         "更新": launcher_dir / "更新科技项目台账.cmd",
     }
     write_launcher(launchers["启动"], environment + f'start "" "{app_executable}"')
+    # 使用当前用户 Run 项实现无需管理员权限的开机常驻；数据库仍在 data_root。
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, PRODUCT_NAME, 0, winreg.REG_SZ, f'"{app_executable}" --resident')
     write_launcher(launchers["备份"], environment + f'"{backup_executable}"')
     write_launcher(launchers["诊断"], environment + f'"{installer_executable}" diagnose --program-root "{program_root}" --data-root "{data_root}"')
     write_launcher(launchers["卸载"], environment + f'"{installer_executable}" uninstall --program-root "{program_root}" --version "{version}"')
@@ -296,6 +301,11 @@ def uninstall_release(program_root: Path, version: str) -> Path:
     target = program_root / version
     if not target.is_dir():
         raise RuntimeError(f"未找到要卸载的程序版本：{target}")
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE) as key:
+        try:
+            winreg.DeleteValue(key, PRODUCT_NAME)
+        except FileNotFoundError:
+            pass
     shutil.rmtree(target)
     return target
 

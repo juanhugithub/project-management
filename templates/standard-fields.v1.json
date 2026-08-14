@@ -1,0 +1,16 @@
+{
+  "dictionary_id": "project-ledger-standard-fields",
+  "version": "1.0.0",
+  "fields": [
+    {"name": "project.project_no", "label": "项目编号/文号", "aliases": ["项目编号", "文号", "立项编号", "批准文号"], "type": "string"},
+    {"name": "enterprise.credit_code", "label": "企业统一社会信用代码", "aliases": ["统一社会信用代码", "信用代码", "企业信用代码"], "type": "string"},
+    {"name": "project.name", "label": "项目名称", "aliases": ["项目名", "项目名称"], "type": "string"},
+    {"name": "enterprise.name", "label": "企业名称", "aliases": ["单位名称", "申报单位", "承担单位", "企业名称"], "type": "string"},
+    {"name": "project.stage", "label": "项目阶段", "aliases": ["阶段", "项目状态", "状态"], "type": "enum"},
+    {"name": "project.total_amount", "label": "项目总金额", "aliases": ["总投资", "项目总投资", "总金额"], "type": "money"},
+    {"name": "funding.amount", "label": "资金金额", "aliases": ["资金数", "拨付金额", "金额"], "type": "money"},
+    {"name": "funding.source_type", "label": "资金来源", "aliases": ["资金来源", "来源"], "type": "enum"},
+    {"name": "project.start_date", "label": "开始日期", "aliases": ["项目开始时间", "开始日期", "立项日期"], "type": "date"},
+    {"name": "project.end_date", "label": "结束日期", "aliases": ["项目结束时间", "结束日期", "完成日期"], "type": "date"}
+  ]
+}

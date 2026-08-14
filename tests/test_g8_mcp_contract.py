@@ -20,6 +20,9 @@ EXPECTED_G8_TOOLS = {
 EXPECTED_G9_TEMPLATE_TOOLS = {
     "list_reporting_templates", "get_template_schema", "build_template_dataset", "validate_filled_template",
 }
+EXPECTED_AGENT_BRIDGE_TOOLS = {
+    "get_standard_field_dictionary", "suggest_field_mapping", "translate_external_rows",
+}
 HISTORICAL_TOOLS = {
     "list_projects", "get_project", "list_enterprises", "get_enterprise",
     "list_fundings", "list_nodes", "get_reminders", "get_stats",
@@ -71,7 +74,7 @@ def test_g8_registers_exact_new_read_only_business_tools(tmp_db, monkeypatch):
     """G8 只增加五个公共业务工具，名称中不得出现写入动作。"""
     _seed(tmp_db, monkeypatch)
     tools = set(mcp_server.mcp._tool_manager._tools)
-    assert tools - HISTORICAL_TOOLS == EXPECTED_G8_TOOLS | EXPECTED_G9_TEMPLATE_TOOLS
+    assert tools - HISTORICAL_TOOLS == EXPECTED_G8_TOOLS | EXPECTED_G9_TEMPLATE_TOOLS | EXPECTED_AGENT_BRIDGE_TOOLS
     assert not {name for name in tools if any(word in name for word in ("create", "update", "delete", "restore", "import"))}
 
 

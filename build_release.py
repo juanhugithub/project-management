@@ -20,7 +20,7 @@ RELEASE_ROOT = PROJECT_ROOT / "release"
 def pyinstaller_command(entry: Path, name: str, dist: Path, work: Path, spec: Path, data: list[tuple[Path, Path]], onefile: bool = False) -> list[str]:
     """构造确定的 PyInstaller 命令；数据清单只来自 release_manifest。"""
     bundle_mode = "--onefile" if onefile else "--onedir"
-    command = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", bundle_mode, "--name", name,
+    command = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--noconsole", bundle_mode, "--name", name,
                "--distpath", str(dist), "--workpath", str(work), "--specpath", str(spec)]
     for source, destination in data:
         command.extend(["--add-data", f"{source};{destination}"])

@@ -507,3 +507,27 @@ python C:\Users\Administrator\.codex\skills\vibe-engineer\scripts\validate_vibe_
 4. 未完成项；
 5. 下一阶段建议；
 6. 实际执行命令和结果，以及对正式数据库未改动的证明。
+
+## 11. D15：后台常驻与 Agent 字段翻译层（本阶段已实现）
+
+### 已实现
+
+1. `resident_service.py` 提供当前用户开机启动项的安装、移除和后台运行入口；安装器在创建启动入口时写入 `Run` 项，主程序收到 `--resident` 时不自动打开浏览器。
+2. `ledger/field_mapping.py` 与 `templates/standard-fields.v1.json` 提供版本化标准字段字典、外部表头候选匹配、人工确认后的确定性行翻译。
+3. 本地 API 增加 `/api/field-mapping/dictionary`、`/suggest`、`/translate`；MCP 增加 `get_standard_field_dictionary`、`suggest_field_mapping`、`translate_external_rows` 三个只读工具。
+4. 翻译层不写入 SQLite、不补造缺失事实；Agent 负责解释和起草，模板/映射规则负责字段、单位、格式和必填事实。
+
+### 当前边界
+
+- 电脑开机且后台进程运行时，手机或电脑 Agent 才能访问本机接口；电脑关机时本地数据库不可访问。
+- 公网访问仍需 HTTPS 反向代理或国内 VPS 转发；不得直接把 SQLite 端口暴露到公网。
+- 每日数据体检和一键诊断按用户要求暂不实现。
+- 公网 VPS、域名、HTTPS 反向隧道仅保留设计和配置入口，当前不购买、不配置、不自动启动。
+- 当前阶段优先支持同一台电脑上的本地 Agent：stdio MCP 或 `127.0.0.1:8001` 本地 HTTP。
+
+### 验收证据
+
+```text
+python -X utf8 -m pytest -q
+124 passed, 1 warning
+```

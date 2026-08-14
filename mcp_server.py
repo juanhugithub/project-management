@@ -15,7 +15,7 @@ import os
 import sqlite3
 
 from mcp.server.fastmcp import FastMCP
-from ledger import queries, templates
+from ledger import queries, templates, field_mapping
 from mcp_contract import envelope
 from runtime_paths import get_runtime_paths
 
@@ -449,6 +449,30 @@ def get_template_schema(template_id: str, version: str = None) -> dict:
                         {"template_id": template_id, "version": version})
     except templates.TemplateError as error:
         return envelope({"ok": False, "error": str(error)}, {"template_id": template_id, "version": version})
+
+
+@mcp.tool()
+def get_standard_field_dictionary() -> dict:
+    """返回外部表格翻译所使用的版本化标准字段字典与别名。"""
+    return envelope({"ok": True, "dictionary": field_mapping.standard_fields()})
+
+
+@mcp.tool()
+def suggest_field_mapping(headers: list) -> dict:
+    """根据外部表头给出确定性映射候选；manual_review 必须由人确认后才能执行翻译。"""
+    try:
+        return envelope({"ok": True, "mapping": field_mapping.suggest_mapping(headers)})
+    except field_mapping.FieldMappingError as error:
+        return envelope({"ok": False, "error": str(error)})
+
+
+@mcp.tool()
+def translate_external_rows(rows: list, mapping: dict) -> dict:
+    """按已确认映射翻译工作表行，不写入数据库、不补造缺失事实。"""
+    try:
+        return envelope({"ok": True, "translated": field_mapping.translate_rows(rows, mapping)})
+    except field_mapping.FieldMappingError as error:
+        return envelope({"ok": False, "error": str(error)})
 
 
 @mcp.tool()

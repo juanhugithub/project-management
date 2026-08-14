@@ -48,8 +48,26 @@ class RemoteMCPConfig:
 
 
 def load_config(env: dict[str, str] | None = None) -> RemoteMCPConfig:
-    """读取并校验环境变量，拒绝以不完整安全条件启动公网服务。"""
-    values = os.environ if env is None else env
+    """读取 JSON 配置并允许环境变量覆盖，拒绝不完整的公网安全条件。"""
+    values = dict(os.environ if env is None else env)
+    config_path = values.get("REMOTE_MCP_CONFIG", "").strip()
+    if config_path:
+        path = Path(config_path)
+    elif values.get("LEDGER_HOME", "").strip() or values.get("LOCALAPPDATA", "").strip() or values.get("LEDGER_PATHS_CONFIG", "").strip():
+        path = get_runtime_paths(values).config / "remote-mcp.json"
+    else:
+        path = None
+    if path is not None and path.exists():
+        try:
+            file_values = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RemoteMCPConfigurationError(f"远程 MCP 配置文件无效：{path}") from error
+        if not isinstance(file_values, dict):
+            raise RemoteMCPConfigurationError("远程 MCP 配置文件必须是 JSON 对象")
+        for key, value in file_values.items():
+            env_key = f"REMOTE_MCP_{key.upper()}"
+            if env_key not in values:
+                values[env_key] = str(value)
     bind = values.get("REMOTE_MCP_BIND", "127.0.0.1").strip()
     token = values.get("REMOTE_MCP_API_TOKEN", "").strip() or None
     try:
