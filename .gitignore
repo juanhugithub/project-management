@@ -7,11 +7,12 @@
 # ============================================================
 
 # ---- 正式数据与备份：严禁入库 ----
-data/project.db
-data/*.db
-data/*.db-*
+data/
 backups/
-imports/
+import-archives/
+imports/archive/
+imports/archives/
+imports/originals/
 exports/
 
 # ---- 可再生成产物 ----
@@ -29,6 +30,14 @@ htmlcov/
 .venv/
 venv/
 *.log
+.env
+.env.local
+local-config.json
+credentials.json
+secrets/
+*.key
+*.pem
+*.pfx
 
 # ---- 编辑器和系统临时文件 ----
 .idea/
