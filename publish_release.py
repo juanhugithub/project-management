@@ -37,8 +37,22 @@ def _request(path, method="GET", payload=None):
 
 
 def _preflight_token():
-    """发布前验证 Token 的仓库访问权限，避免先创建半成品 Release。"""
-    _request("")
+    """发布前验证 Token 本身，公开仓库接口不能证明写权限。"""
+    token = os.environ.get("GITEE_API_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("未配置 GITEE_API_TOKEN")
+    request = urllib.request.Request(
+        "https://gitee.com/api/v5/user?access_token=" + urllib.parse.quote(token),
+        headers={"Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", "replace")
+        raise RuntimeError(f"Gitee Token 无效或已过期（HTTP {error.code}）：{detail}") from error
+    if not isinstance(payload, dict) or not payload.get("id"):
+        raise RuntimeError("Gitee Token 鉴权响应无效")
 
 
 def _upload_asset(release_id, package):
@@ -50,7 +64,7 @@ def _upload_asset(release_id, package):
             f"--{boundary}\r\nContent-Disposition: form-data; name=file; filename=台账安装器.exe\r\n"
             "Content-Type: application/octet-stream\r\n\r\n").encode("utf-8") + content + f"\r\n--{boundary}--\r\n".encode()
     request = urllib.request.Request(
-        f"{API}/releases/{release_id}/attach_files", data=body,
+        f"{API}/releases/{release_id}/attach_files?access_token={urllib.parse.quote(token)}", data=body,
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=180) as response:
