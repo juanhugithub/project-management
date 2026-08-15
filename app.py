@@ -55,6 +55,8 @@ MIME = {
     ".js": "application/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".json": "application/json; charset=utf-8",
+    # SVG 必须使用图像媒体类型返回，否则 Chromium 会把它视为普通二进制文件并拒绝渲染。
+    ".svg": "image/svg+xml; charset=utf-8",
     ".ico": "image/x-icon",
 }
 

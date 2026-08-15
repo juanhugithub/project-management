@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PIL import Image
 
+import app
 import build_release
 import installer
 
@@ -21,6 +22,11 @@ def test_web_brand_uses_orbit_icon_instead_of_text_mark():
     assert '<link rel="icon" type="image/svg+xml" href="/static/brand-icon.svg' in html
     assert '<span class="brand-mark" aria-hidden="true">台</span>' not in html
     assert "ellipse" in svg and "circle" in svg
+
+
+def test_svg_brand_icon_uses_browser_renderable_content_type():
+    """内置静态服务器必须把 SVG 声明为图像，确保安装版浏览器能够正常渲染。"""
+    assert app.MIME[".svg"] == "image/svg+xml; charset=utf-8"
 
 
 def test_windows_icon_contains_all_launcher_sizes():
