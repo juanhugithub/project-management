@@ -720,7 +720,7 @@ function exportCSV() {
   const blob = new Blob(["\ufeff" + head + body], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "统计报表_" + new Date().toISOString().slice(0, 10) + ".csv";
+  a.download = "资金统计报表_" + new Date().toISOString().slice(0, 10) + ".csv";
   a.click();
   URL.revokeObjectURL(a.href);
 }

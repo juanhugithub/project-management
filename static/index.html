@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>科技项目全生命周期台账</title>
-  <link rel="stylesheet" href="/static/style.css?v=0.2.3">
+  <link rel="stylesheet" href="/static/style.css?v=0.2.4">
 </head>
 <body>
   <header class="site-header">
@@ -14,7 +14,7 @@
       <button data-tab="projects" class="tab-btn">项目总览</button>
       <button data-tab="reminders" class="tab-btn">提醒</button>
       <button data-tab="enterprises" class="tab-btn">企业</button>
-      <button data-tab="stats" class="tab-btn">统计</button>
+      <button data-tab="stats" class="tab-btn">资金统计</button>
       <div class="settings-nav">
         <div id="settings-menu" class="settings-menu hidden" role="menu" aria-label="设置菜单">
           <button data-tab="dict" class="tab-btn settings-item" role="menuitem">配置</button>
@@ -136,12 +136,14 @@
       </div>
     </section>
 
-    <!-- ===== 统计 ===== -->
+    <!-- ===== 资金统计 ===== -->
     <section id="tab-stats" class="tab">
+      <div class="workspace-hero stats-hero"><div><h1>资金统计</h1></div></div>
       <div class="filters">
         <select id="st-by">
           <option value="category">按类型</option>
           <option value="level">按层级</option>
+          <option value="district">按区镇</option>
           <option value="stage">按阶段</option>
           <option value="year">按年度</option>
           <option value="enterprise">按企业</option>
@@ -298,6 +300,6 @@
   <!-- 拖拽导入遮罩 -->
   <div class="drag-overlay">📥 松开鼠标，导入 Excel 文件</div>
 
-  <script src="/static/app.js?v=0.2.3"></script>
+  <script src="/static/app.js?v=0.2.4"></script>
 </body>
 </html>
