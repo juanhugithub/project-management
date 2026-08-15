@@ -705,8 +705,8 @@ async function renderDict() {
   $("#dict-view").querySelectorAll(".dict-sortable").forEach(list => {
     let dragging = null;
     list.querySelectorAll(".dict-item").forEach(item => {
-      item.addEventListener("dragstart", event => { event.stopPropagation(); dragging = item; item.classList.add("dragging"); });
-      item.addEventListener("dragend", event => { event.stopPropagation(); item.classList.remove("dragging"); dragging = null; });
+      item.addEventListener("dragstart", event => { event.stopPropagation(); dictionaryDragging = true; dragging = item; item.classList.add("dragging"); });
+      item.addEventListener("dragend", event => { event.stopPropagation(); dictionaryDragging = false; item.classList.remove("dragging"); dragging = null; });
       item.addEventListener("dragover", event => {
         event.stopPropagation();
         event.preventDefault();
@@ -861,9 +861,10 @@ $$("#modal-tabs .mtab").forEach(b => b.addEventListener("click", () => switchMTa
 
 // 整页拖拽导入（任何页面都可拖入，统一走弹窗展示结果）
 let dragDepth = 0;
+let dictionaryDragging = false;
 ["dragenter", "dragover"].forEach(evt => {
   document.addEventListener(evt, e => {
-    if (e.target.closest(".dict-item")) return;
+    if (dictionaryDragging || e.target.closest(".dict-item") || !e.dataTransfer?.types?.includes("Files")) return;
     e.preventDefault();
     dragDepth++;
     document.body.classList.add("dragging");
@@ -871,13 +872,14 @@ let dragDepth = 0;
 });
 ["dragleave", "drop"].forEach(evt => {
   document.addEventListener(evt, e => {
-    if (e.target.closest(".dict-item")) return;
+    if (dictionaryDragging || e.target.closest(".dict-item")) return;
     e.preventDefault();
     dragDepth--;
     if (dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); }
   });
 });
 document.addEventListener("drop", e => {
+  if (dictionaryDragging || e.target.closest(".dict-item")) return;
   e.preventDefault();
   dragDepth = 0;
   document.body.classList.remove("dragging");
@@ -969,7 +971,7 @@ $("#rm-days").addEventListener("change", loadReminders);
 $("#btn-rm-refresh").addEventListener("click", loadReminders);
 $("#btn-usage-refresh").addEventListener("click", loadUsage);
 $("#btn-check-update").addEventListener("click", async () => {
-  try { const result = await checkForUpdate(); if (!result.configured) toast("尚未配置 Gitee 发布清单，当前只能使用本地功能", "err"); else if (!result.available) toast("当前已是最新版本"); }
+  try { const result = await checkForUpdate(); if (!result.configured) toast("尚未配置 Gitee 发布清单，当前只能使用本地功能", "ok"); else if (!result.available) toast("当前已是最新版本"); }
   catch (error) { toast(error.message, "err"); }
 });
 
