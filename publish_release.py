@@ -36,6 +36,11 @@ def _request(path, method="GET", payload=None):
         raise RuntimeError(f"Gitee API {error.code}: {detail}") from error
 
 
+def _preflight_token():
+    """发布前验证 Token 的仓库访问权限，避免先创建半成品 Release。"""
+    _request("")
+
+
 def _upload_asset(release_id, package):
     """以 multipart 上传安装器；不打印响应中的 Token 或请求头。"""
     token = os.environ["GITEE_API_TOKEN"].strip()
@@ -56,6 +61,7 @@ def _upload_asset(release_id, package):
 
 
 def publish():
+    _preflight_token()
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     package = ROOT / "release" / "台账安装器.exe"
     if not package.is_file():

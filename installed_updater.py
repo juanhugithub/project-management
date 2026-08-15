@@ -117,32 +117,55 @@ def check_installed_update(manifest_url: str | None, config_root: Path) -> dict:
 
 
 def _download_verified_installer(release: InstalledRelease, temporary: Path) -> Path:
-    """下载到临时文件后再校验，校验失败绝不调用安装器。"""
-    content = _read_url(release.installer_url)
-    actual = _sha256_bytes(content)
-    if actual != release.installer_sha256:
-        raise InstalledUpdateError(f"安装器 SHA-256 校验失败：期望 {release.installer_sha256}，实际 {actual}")
+    """分块下载到临时文件并边下载边校验，校验失败绝不调用安装器。"""
     target = temporary / "台账安装器.exe"
-    target.write_bytes(content)
+    parsed = urllib.parse.urlparse(release.installer_url)
+    if parsed.scheme not in {"https", "file"}:
+        raise InstalledUpdateError("发布地址必须使用 HTTPS；仅自动化测试允许 file 地址")
+    digest = hashlib.sha256()
+    try:
+        with urllib.request.urlopen(release.installer_url, timeout=30) as response, target.open("wb") as output:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+                output.write(chunk)
+    except OSError as error:
+        raise InstalledUpdateError(f"无法下载安装器：{release.installer_url}") from error
+    actual = digest.hexdigest()
+    if actual != release.installer_sha256:
+        target.unlink(missing_ok=True)
+        raise InstalledUpdateError(f"安装器 SHA-256 校验失败：期望 {release.installer_sha256}，实际 {actual}")
     return target
 
 
 def apply_installed_update(manifest_url: str | None, program_root: Path, data_root: Path, config_root: Path) -> dict:
     """校验后启动新安装器；安装器只新增版本目录并重写启动入口，不执行数据库迁移。"""
-    plan = check_installed_update(manifest_url, config_root)
-    if not plan["update_available"]:
-        return {"updated": False, **plan}
-    release: InstalledRelease = plan["release"]
-    with tempfile.TemporaryDirectory(prefix="ledger-installed-update-") as directory:
-        downloaded = _download_verified_installer(release, Path(directory))
-        command = [str(downloaded), "install", "--program-root", str(program_root), "--data-root", str(data_root), "--config-root", str(config_root)]
-        result = subprocess.run(command, text=True, encoding="utf-8", errors="replace", capture_output=True)
-    if result.returncode != 0:
-        raise InstalledUpdateError("新版本安装失败；原程序版本、数据库和配置均未改动：" + (result.stderr or result.stdout).strip())
-    installed = read_installed_version(config_root)
-    if installed != release.version:
-        raise InstalledUpdateError(f"安装器完成后当前版本不一致：期望 {release.version}，实际 {installed}")
-    return {"updated": True, **plan, "installed_version": installed}
+    lock = config_root / ".update.lock"
+    config_root.mkdir(parents=True, exist_ok=True)
+    try:
+        handle = lock.open("x", encoding="utf-8")
+    except FileExistsError as error:
+        raise InstalledUpdateError("更新正在进行中，请等待当前更新完成") from error
+    try:
+        plan = check_installed_update(manifest_url, config_root)
+        if not plan["update_available"]:
+            return {"updated": False, **plan}
+        release: InstalledRelease = plan["release"]
+        with tempfile.TemporaryDirectory(prefix="ledger-installed-update-") as directory:
+            downloaded = _download_verified_installer(release, Path(directory))
+            command = [str(downloaded), "install", "--program-root", str(program_root), "--data-root", str(data_root), "--config-root", str(config_root)]
+            result = subprocess.run(command, text=True, encoding="utf-8", errors="replace", capture_output=True)
+        if result.returncode != 0:
+            raise InstalledUpdateError("新版本安装失败；原程序版本、数据库和配置均未改动：" + (result.stderr or result.stdout).strip())
+        installed = read_installed_version(config_root)
+        if installed != release.version:
+            raise InstalledUpdateError(f"安装器完成后当前版本不一致：期望 {release.version}，实际 {installed}")
+        return {"updated": True, **plan, "installed_version": installed}
+    finally:
+        handle.close()
+        lock.unlink(missing_ok=True)
 
 
 def main() -> int:
