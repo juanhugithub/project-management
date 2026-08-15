@@ -502,8 +502,8 @@ function openProjectModal(id) {
 
 async function openModal(kind, id, onSubmit) {
   modalContext = { kind, id, onSubmit };
-  // 标签页：仅「新增项目」显示（编辑/企业/画像不显示）
-  const showTabs = (kind === "project" && !id);
+  // 新增项目和新增企业均提供批量导入；编辑单条记录时只保留手动表单。
+  const showTabs = ((kind === "project" || kind === "enterprise") && !id);
   $("#modal-tabs").classList.toggle("hidden", !showTabs);
   $("#excel-result").innerHTML = "";
   if (showTabs) switchMTab("manual");
@@ -526,9 +526,13 @@ function closeModal() {
 }
 
 function switchMTab(name) {
+  const manual = name === "manual";
   $$("#modal-tabs .mtab").forEach(b => b.classList.toggle("active", b.dataset.mtab === name));
-  $("#mtab-manual").classList.toggle("hidden", name !== "manual");
-  $("#mtab-excel").classList.toggle("hidden", name !== "excel");
+  $("#mtab-manual").classList.toggle("hidden", !manual);
+  $("#mtab-excel").classList.toggle("hidden", manual);
+  $("#btn-modal-save").style.display = manual ? "" : "none";
+  $("#btn-modal-cancel").textContent = manual ? "取消" : "关闭";
+  if (name === "excel") configureExcelPanel();
 }
 
 $("#btn-modal-cancel").addEventListener("click", closeModal);
@@ -877,18 +881,37 @@ function collectAdvFilters() {
   return out;
 }
 
-/* ---------- Excel 批量导入（整合进「新增项目」弹窗） ---------- */
+/* ---------- Excel 批量导入（新增项目、企业共用弹窗） ---------- */
+function activeImportKind() {
+  return modalContext && modalContext.kind === "enterprise" ? "enterprise" : "project";
+}
+
+function configureExcelPanel() {
+  const enterprise = activeImportKind() === "enterprise";
+  $("#btn-modal-template").textContent = enterprise
+    ? "📄 下载企业导入模板"
+    : "📄 下载模板（一张表，自动归仓）";
+  $("#drop-zone-sub").textContent = enterprise
+    ? "每行一家企业，上传后先预览再确认入库（.xlsx）"
+    : "一张总表包含企业与项目所有字段，系统自动拆分归仓（.xlsx）";
+}
+
 async function importFile(file) {
   if (!/\.xlsx?$/i.test(file.name)) { toast("请选择 .xlsx 文件", "err"); return; }
+  const importKind = activeImportKind();
   const reader = new FileReader();
   reader.onload = async () => {
     const b64 = reader.result.split(",")[1];
     try {
-      const res = await api("/import", "POST", { filename: file.name, data: b64 });
-      showExcelTab();
-      renderExcelResult(res, file.name);
-      await loadProjects();
-      await loadEnterprises();
+      const endpoint = importKind === "enterprise" ? "/enterprise-import" : "/import";
+      const res = await api(endpoint, "POST", { filename: file.name, data: b64 });
+      showExcelTab(importKind);
+      if (importKind === "enterprise") renderEnterpriseImportPreview(res, file.name);
+      else {
+        renderExcelResult(res, file.name);
+        await loadProjects();
+        await loadEnterprises();
+      }
     } catch (err) {
       toast("导入失败：" + err.message, "err");
     }
@@ -896,16 +919,51 @@ async function importFile(file) {
   reader.readAsDataURL(file);
 }
 
-// 打开弹窗并切到「Excel 批量导入」标签
-function showExcelTab() {
+// 打开弹窗并切到当前业务对象的「Excel 批量导入」标签。
+function showExcelTab(kind = activeImportKind()) {
   $("#modal-tabs").classList.remove("hidden");
   $$("#modal-tabs .mtab").forEach(b => b.classList.toggle("active", b.dataset.mtab === "excel"));
   $("#mtab-manual").classList.add("hidden");
   $("#mtab-excel").classList.remove("hidden");
-  $("#modal-title").textContent = "新增项目";
+  $("#modal-title").textContent = kind === "enterprise" ? "新增企业" : "新增项目";
   $("#btn-modal-save").style.display = "none";
   $("#btn-modal-cancel").textContent = "关闭";
   $("#modal").classList.remove("hidden");
+  configureExcelPanel();
+}
+
+function renderEnterpriseImportPreview(res, filename) {
+  const preview = res.preview || { rows: [], summary: { new_enterprise: 0, blocking: 0 } };
+  const summary = preview.summary;
+  const statusLabel = {
+    new_enterprise: "可导入",
+    duplicate: "重复企业",
+    missing_identity: "缺少必填项",
+    field_error: "字段不匹配",
+  };
+  $("#excel-result").innerHTML = `
+    <div class="sub-title">导入预览：${escapeHtml(filename)}</div>
+    <div class="fund-check ${summary.blocking ? "warn" : "ok"}">
+      <b>可新增 ${summary.new_enterprise} 家　|　需处理 ${summary.blocking} 行</b>
+    </div>
+    <table class="sub-table"><thead><tr><th>行号</th><th>结论</th><th>说明</th></tr></thead><tbody>
+      ${preview.rows.map(row => `<tr><td class="num">${row.row_no + 1}</td><td>${statusLabel[row.conclusion] || row.conclusion}</td><td>${escapeHtml(row.error || "检查通过")}</td></tr>`).join("")}
+    </tbody></table>
+    ${summary.blocking
+      ? `<div class="notice">请按说明修改 Excel 后重新上传。存在阻断项时不会写入任何企业。</div>`
+      : `<div class="modal-actions"><button id="btn-confirm-enterprise-import" class="primary">确认导入 ${summary.new_enterprise} 家企业</button></div>`}
+  `;
+  const confirmButton = $("#btn-confirm-enterprise-import");
+  if (confirmButton) confirmButton.addEventListener("click", async () => {
+    try {
+      const result = await api(`/enterprise-import/${res.id}/confirm`, "POST");
+      $("#excel-result").innerHTML = `<div class="sub-title">导入完成</div><div class="fund-check ok"><b>已新增 ${result.enterprise_count} 家企业</b></div>`;
+      await loadEnterprises();
+      toast(`已导入 ${result.enterprise_count} 家企业`);
+    } catch (error) {
+      toast("确认导入失败：" + error.message, "err");
+    }
+  });
 }
 
 // 渲染导入结果到 excel 标签
@@ -931,7 +989,9 @@ function renderExcelResult(res, filename) {
 }
 
 // 弹窗内：下载模板 + 拖放区域 + 文件选择 + 标签切换
-$("#btn-modal-template").addEventListener("click", () => { window.location.href = "/api/template"; });
+$("#btn-modal-template").addEventListener("click", () => {
+  window.location.href = activeImportKind() === "enterprise" ? "/api/enterprise-template" : "/api/template";
+});
 const dz = $("#drop-zone");
 dz.addEventListener("click", () => $("#file-import2").click());
 dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("over"); });

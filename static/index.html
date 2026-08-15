@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>科技项目全生命周期台账</title>
-  <link rel="stylesheet" href="/static/style.css?v=0.2.6">
+  <link rel="stylesheet" href="/static/style.css?v=0.2.7">
 </head>
 <body>
   <header class="site-header">
@@ -266,7 +266,7 @@
     <div class="modal-box">
       <div class="modal-head"><h3 id="modal-title"></h3><button id="btn-modal-close" class="x">✕</button></div>
 
-      <!-- 标签页：仅「新增项目」显示 -->
+      <!-- 标签页：新增项目和新增企业共用，编辑记录时仍只显示手动表单。 -->
       <div id="modal-tabs" class="modal-tabs hidden">
         <button class="mtab active" data-mtab="manual">手动录入</button>
         <button class="mtab" data-mtab="excel">Excel 批量导入</button>
@@ -287,7 +287,7 @@
         <div id="drop-zone" class="drop-zone">
           <div class="dz-icon">📥</div>
           <div class="dz-text">把填好的 Excel 拖到这里</div>
-          <div class="dz-sub">一张总表包含企业与项目所有字段，系统自动拆分归仓（.xlsx）</div>
+          <div id="drop-zone-sub" class="dz-sub">一张总表包含企业与项目所有字段，系统自动拆分归仓（.xlsx）</div>
           <input type="file" id="file-import2" accept=".xlsx" class="hidden">
         </div>
         <div id="excel-result"></div>
@@ -300,6 +300,6 @@
   <!-- 拖拽导入遮罩 -->
   <div class="drag-overlay">📥 松开鼠标，导入 Excel 文件</div>
 
-  <script src="/static/app.js?v=0.2.6"></script>
+  <script src="/static/app.js?v=0.2.7"></script>
 </body>
 </html>

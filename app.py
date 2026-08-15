@@ -285,8 +285,12 @@ class Handler(BaseHTTPRequestHandler):
             self._api_funding_check(method, parts, qs)
         elif resource == "import":
             self._api_import(method, parts, qs)
+        elif resource == "enterprise-import":
+            self._api_enterprise_import(method, parts, qs)
         elif resource == "template":
             self._api_template(method, parts, qs)
+        elif resource == "enterprise-template":
+            self._api_enterprise_template(method, parts, qs)
         elif resource == "dashboard":
             self._api_dashboard(method, parts, qs)
         elif resource == "funding-plan":
@@ -483,6 +487,23 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _api_enterprise_template(self, method, parts, qs):
+        """下载企业专用模板；模板字段与新增企业表单保持一致。"""
+        if method != "GET":
+            self._err(405, "method not allowed"); return
+        from enterprise_excel import build_template
+        path = os.path.join(BASE_DIR, "企业导入模板.xlsx")
+        if not os.path.exists(path):
+            build_template(path)
+        with open(path, "rb") as file:
+            data = file.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.send_header("Content-Disposition", 'attachment; filename="enterprise_import_template.xlsx"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     # ---------- Excel 导入 ----------
     def _api_import(self, method, parts, qs):
         if method == "GET" and len(parts) == 1:
@@ -533,6 +554,39 @@ class Handler(BaseHTTPRequestHandler):
         except (DomainError, sqlite3.Error) as e:
             self._err(400, f"导入暂存失败: {e}"); return
         self._ok(result)
+
+    def _api_enterprise_import(self, method, parts, qs):
+        """企业 Excel 受控导入：先暂存预览，再由页面明确确认入库。"""
+        from imports.controlled import ImportWorkflow
+        workflow = ImportWorkflow(DB_PATH, IMPORT_ARCHIVE_DIR, apply_schema=False)
+        if method == "POST" and len(parts) == 2 and parts[1] == "confirm":
+            try:
+                self._ok(workflow.confirm_enterprises(int(parts[0])))
+            except workflow.ConfirmationBlocked as error:
+                self._err(409, str(error))
+            except (DomainError, ValueError, sqlite3.Error) as error:
+                self._err(400, str(error))
+            return
+        if method != "POST" or parts:
+            self._err(405, "method not allowed"); return
+
+        import base64
+        import io
+        from openpyxl import load_workbook
+        from enterprise_excel import normalized_rows
+
+        body = self._read_body()
+        try:
+            raw = base64.b64decode(body.get("data") or "")
+            workbook = load_workbook(io.BytesIO(raw), data_only=True)
+            rows = normalized_rows(workbook)
+            if not rows:
+                raise DomainError("企业模板中没有可导入的数据行")
+            result = workflow.parse_enterprises_and_stage(body.get("filename") or "企业导入.xlsx", raw, rows)
+            result["preview"] = workflow.preview_enterprises(result["id"])
+            self._ok(result)
+        except (DomainError, ValueError, sqlite3.Error) as error:
+            self._err(400, str(error))
 
     # ---------- 字典 ----------
     def _api_dict(self, method, parts, qs):

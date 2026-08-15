@@ -69,6 +69,115 @@ class ImportWorkflow:
                     conn.execute("INSERT INTO import_staging(batch_id,row_no,raw_json,conclusion,error) VALUES(?,?,?,?,?)", (batch_id, row_no, json.dumps(normalized, ensure_ascii=False, sort_keys=True), conclusion, error))
         return {"id": batch_id}
 
+    def parse_enterprises_and_stage(self, file_name, file_bytes, rows):
+        """暂存企业专用工作簿；确认前不写 enterprise 正式表。"""
+        digest = hashlib.sha256(file_bytes).hexdigest()
+        safe_name = Path(file_name).name or "企业导入.xlsx"
+        archive_path = self.archive_dir / f"{digest}-{safe_name}"
+        if not archive_path.exists():
+            archive_path.write_bytes(file_bytes)
+        seen_codes = set()
+        with self._conn() as conn:
+            # 企业类型和区镇沿用系统配置字典，预览阶段就明确指出不匹配值。
+            allowed_values = {}
+            for item in conn.execute(
+                "SELECT dict_type,value FROM dict_item WHERE dict_type IN ('enterprise_type','district') AND is_active=1"
+            ):
+                allowed_values.setdefault(item["dict_type"], set()).add(item["value"])
+            with conn:
+                cursor = conn.execute(
+                    "INSERT INTO import_batch(file_name,file_sha256,field_map_version,archive_path,status) "
+                    "VALUES(?,?,?,?, 'staged')",
+                    (safe_name, digest, "enterprise-v1", str(archive_path)),
+                )
+                batch_id = cursor.lastrowid
+                for row_no, raw in enumerate(rows, 1):
+                    normalized = {key: self._text(value) for key, value in raw.items()}
+                    name = normalized.get("name")
+                    code = normalized.get("credit_code")
+                    if not name or not code:
+                        conclusion, error = "missing_identity", "企业名称和统一社会信用代码均为必填项"
+                    elif code in seen_codes or conn.execute(
+                        "SELECT 1 FROM enterprise WHERE credit_code=? AND is_deleted=0", (code,)
+                    ).fetchone():
+                        conclusion, error = "duplicate", "统一社会信用代码已存在或在文件内重复"
+                    else:
+                        invalid = []
+                        if normalized.get("enterprise_type") and normalized["enterprise_type"] not in allowed_values.get("enterprise_type", set()):
+                            invalid.append("企业类型不在系统启用选项中")
+                        if normalized.get("district") and normalized["district"] not in allowed_values.get("district", set()):
+                            invalid.append("区镇不在系统启用选项中")
+                        if invalid:
+                            conclusion, error = "field_error", "；".join(invalid)
+                        else:
+                            conclusion, error = "new_enterprise", None
+                            seen_codes.add(code)
+                    conn.execute(
+                        "INSERT INTO import_staging(batch_id,row_no,raw_json,conclusion,error) VALUES(?,?,?,?,?)",
+                        (batch_id, row_no, json.dumps(normalized, ensure_ascii=False, sort_keys=True), conclusion, error),
+                    )
+        return {"id": batch_id}
+
+    def preview_enterprises(self, batch_id):
+        """返回企业导入的逐行结论和汇总，供页面人工确认。"""
+        with self._conn() as conn:
+            batch = conn.execute(
+                "SELECT id FROM import_batch WHERE id=? AND field_map_version='enterprise-v1'", (batch_id,)
+            ).fetchone()
+            if not batch:
+                raise DomainError("企业导入批次不存在")
+            rows = conn.execute(
+                "SELECT row_no,conclusion,error FROM import_staging WHERE batch_id=? ORDER BY row_no", (batch_id,)
+            ).fetchall()
+        result_rows = [dict(row) for row in rows]
+        return {
+            "rows": result_rows,
+            "summary": {
+                "new_enterprise": sum(row["conclusion"] == "new_enterprise" for row in rows),
+                "blocking": sum(row["conclusion"] != "new_enterprise" for row in rows),
+            },
+        }
+
+    def confirm_enterprises(self, batch_id):
+        """人工确认后在一个事务中创建全部企业，并记录来源批次。"""
+        enterprise_fields = (
+            "name", "credit_code", "enterprise_type", "district", "qualifications",
+            "contact_person", "contact_phone", "address", "note",
+        )
+        with self._conn() as conn:
+            batch = conn.execute(
+                "SELECT * FROM import_batch WHERE id=? AND field_map_version='enterprise-v1'", (batch_id,)
+            ).fetchone()
+            if not batch:
+                raise DomainError("企业导入批次不存在")
+            if batch["status"] != "staged":
+                raise DomainError("企业导入批次不是待确认状态")
+            rows = conn.execute(
+                "SELECT * FROM import_staging WHERE batch_id=? ORDER BY row_no", (batch_id,)
+            ).fetchall()
+            if not rows or any(row["conclusion"] != "new_enterprise" for row in rows):
+                raise ConfirmationBlocked("企业导入存在阻断项，不能确认提交")
+            with conn:
+                for staged in rows:
+                    row = json.loads(staged["raw_json"])
+                    payload = {field: row.get(field) for field in enterprise_fields if row.get(field) is not None}
+                    enterprise = services.create(conn, "enterprise", payload, commit=False)
+                    conn.execute(
+                        "UPDATE audit_log SET source_batch=? "
+                        "WHERE object_type='enterprise' AND object_id=? AND source_batch IS NULL",
+                        (str(batch_id), enterprise["id"]),
+                    )
+                conn.execute(
+                    "UPDATE import_batch SET status='committed', committed_at=datetime('now','localtime') WHERE id=?",
+                    (batch_id,),
+                )
+                conn.execute(
+                    "INSERT INTO audit_log(ts,operator,action,object_type,object_id,source_batch,note) "
+                    "VALUES(datetime('now','localtime'),'local-user','import_confirm','import_batch',?,?,?)",
+                    (batch_id, str(batch_id), batch["file_sha256"]),
+                )
+        return {"status": "committed", "id": batch_id, "enterprise_count": len(rows)}
+
     def preview(self, batch_id):
         with self._conn() as conn:
             batch = conn.execute("SELECT id FROM import_batch WHERE id=?", (batch_id,)).fetchone()
