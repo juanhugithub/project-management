@@ -22,6 +22,13 @@ APP_DIRECTORY = "app"
 DATA_DIRECTORIES = ("data", "backups", "imports", "config")
 
 
+def brand_icon_path() -> Path:
+    """按源码或单文件安装器运行形态返回同一品牌图标。"""
+    if getattr(sys, "frozen", False):
+        return release_root() / "brand-icon.ico"
+    return Path(__file__).resolve().parent / "assets" / "brand-icon.ico"
+
+
 def launch_install_gui(payload: Path | None = None, suggested_root: Path | None = None) -> int:
     """在 Windows 桌面显示安装位置选择界面。
 
@@ -55,6 +62,7 @@ def launch_install_gui(payload: Path | None = None, suggested_root: Path | None 
         return 2
 
     window.title(f"{PRODUCT_NAME} 安装器")
+    window.iconbitmap(default=str(brand_icon_path()))
     window.resizable(False, False)
     window.columnconfigure(1, weight=1)
     values = {name: tk.StringVar(value=str(path)) for name, path in defaults.items()}
@@ -92,7 +100,11 @@ def launch_install_gui(payload: Path | None = None, suggested_root: Path | None 
             messagebox.showerror(PRODUCT_NAME, "程序目录、数据目录和配置目录均不能为空。", parent=window)
             return
         try:
-            result = install_release(selected_payload, program_root, data_root, config_root)
+            desktop, start_menu = default_shortcut_folders()
+            result = install_release(
+                selected_payload, program_root, data_root, config_root,
+                desktop=desktop, start_menu=start_menu,
+            )
         except Exception as error:
             messagebox.showerror(PRODUCT_NAME, f"安装未完成：{error}\n\n已有数据库和数据目录未被覆盖。", parent=window)
             return
@@ -126,6 +138,13 @@ def default_user_root(local_app_data: str | None = None) -> Path:
 def default_install_root(local_app_data: str | None = None) -> Path:
     """兼容调用方的默认程序目录。"""
     return default_user_root(local_app_data) / APP_DIRECTORY
+
+
+def default_shortcut_folders() -> tuple[Path, Path]:
+    """返回当前用户桌面和开始菜单程序目录，安装及热更新均刷新这些入口。"""
+    desktop = Path(os.environ["USERPROFILE"]) / "Desktop"
+    start_menu = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+    return desktop, start_menu
 
 
 def release_root() -> Path:
@@ -184,8 +203,8 @@ def write_launcher(path: Path, command: str) -> None:
     path.write_text("@echo off\r\n" + command + "\r\n", encoding="utf-8")
 
 
-def create_shortcut(shortcut: Path, target: Path, arguments: str = "") -> None:
-    """借助 Windows Script Host 创建 .lnk，不引入额外 Python 依赖。"""
+def create_shortcut(shortcut: Path, target: Path, arguments: str = "", icon: Path | None = None) -> None:
+    """创建 Windows 快捷方式，并显式指定品牌图标而不是继承 cmd 图标。"""
     if os.name != "nt":
         raise RuntimeError("桌面快捷方式只能在 Windows 上创建")
     script = (
@@ -194,13 +213,15 @@ def create_shortcut(shortcut: Path, target: Path, arguments: str = "") -> None:
         'link.TargetPath = WScript.Arguments.Item(1);\n'
         'link.Arguments = WScript.Arguments.Item(2);\n'
         'link.WorkingDirectory = WScript.Arguments.Item(3);\n'
+        'link.IconLocation = WScript.Arguments.Item(4);\n'
         'link.Save();\n'
     )
     with tempfile.TemporaryDirectory(prefix="ledger-shortcut-") as temporary:
         script_path = Path(temporary) / "create-shortcut.js"
         script_path.write_text(script, encoding="utf-8")
         subprocess.run(
-            ["cscript.exe", "//nologo", str(script_path), str(shortcut), str(target), arguments, str(target.parent)],
+            ["cscript.exe", "//nologo", str(script_path), str(shortcut), str(target), arguments,
+             str(target.parent), str(icon or target)],
             check=True,
         )
 
@@ -233,11 +254,12 @@ def create_launch_entries(program_root: Path, data_root: Path, config_root: Path
     write_launcher(launchers["更新"], environment + f'"{updater_executable}" update --program-root "{program_root}" --data-root "{data_root}" --config-root "{config_root}"')
     for folder in (desktop, start_menu):
         if folder is not None:
-            create_shortcut(folder / f"{PRODUCT_NAME}.lnk", launchers["启动"])
-            create_shortcut(folder / f"{PRODUCT_NAME} - 备份.lnk", launchers["备份"])
-            create_shortcut(folder / f"{PRODUCT_NAME} - 诊断.lnk", launchers["诊断"])
-            create_shortcut(folder / f"{PRODUCT_NAME} - 卸载.lnk", launchers["卸载"])
-            create_shortcut(folder / f"{PRODUCT_NAME} - 更新.lnk", launchers["更新"])
+            folder.mkdir(parents=True, exist_ok=True)
+            create_shortcut(folder / f"{PRODUCT_NAME}.lnk", launchers["启动"], icon=app_executable)
+            create_shortcut(folder / f"{PRODUCT_NAME} - 备份.lnk", launchers["备份"], icon=app_executable)
+            create_shortcut(folder / f"{PRODUCT_NAME} - 诊断.lnk", launchers["诊断"], icon=app_executable)
+            create_shortcut(folder / f"{PRODUCT_NAME} - 卸载.lnk", launchers["卸载"], icon=app_executable)
+            create_shortcut(folder / f"{PRODUCT_NAME} - 更新.lnk", launchers["更新"], icon=app_executable)
     return launchers
 
 
@@ -337,7 +359,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest-url", help="Gitee 发布清单 HTTPS 地址，用于安装版人工更新")
     args = parser.parse_args(command_line)
     if args.command == "install":
-        result = install_release(release_root() / "payload", args.program_root, args.data_root, args.config_root, manifest_url=args.manifest_url)
+        desktop, start_menu = default_shortcut_folders()
+        result = install_release(
+            release_root() / "payload", args.program_root, args.data_root, args.config_root,
+            desktop=desktop, start_menu=start_menu, manifest_url=args.manifest_url,
+        )
     elif args.command == "uninstall":
         if not args.version:
             parser.error("卸载必须指定 --version")

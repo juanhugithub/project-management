@@ -15,13 +15,14 @@ from release_tools.release_manifest import application_data_sources
 PROJECT_ROOT = Path(__file__).resolve().parent
 BUILD_ROOT = PROJECT_ROOT / "build" / "d13"
 RELEASE_ROOT = PROJECT_ROOT / "release"
+BRAND_ICON = PROJECT_ROOT / "assets" / "brand-icon.ico"
 
 
 def pyinstaller_command(entry: Path, name: str, dist: Path, work: Path, spec: Path, data: list[tuple[Path, Path]], onefile: bool = False) -> list[str]:
     """构造确定的 PyInstaller 命令；数据清单只来自 release_manifest。"""
     bundle_mode = "--onefile" if onefile else "--onedir"
     command = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--noconsole", bundle_mode, "--name", name,
-               "--distpath", str(dist), "--workpath", str(work), "--specpath", str(spec)]
+               "--icon", str(BRAND_ICON), "--distpath", str(dist), "--workpath", str(work), "--specpath", str(spec)]
     for source, destination in data:
         command.extend(["--add-data", f"{source};{destination}"])
     command.append(str(entry))
@@ -42,7 +43,8 @@ def build() -> Path:
     subprocess.run(pyinstaller_command(PROJECT_ROOT / "app.py", "项目台账", dist, work / "app", spec, data), check=True)
     subprocess.run(pyinstaller_command(PROJECT_ROOT / "backup.py", "台账备份", dist, work / "backup", spec, []), check=True)
     subprocess.run(pyinstaller_command(PROJECT_ROOT / "installed_updater.py", "台账更新器", dist, work / "installed-updater", spec, [], onefile=True), check=True)
-    installer_data = [(dist, Path("payload"))]
+    # 安装器窗口和全部可执行文件共用同一品牌 ICO，避免发布后出现多套默认图标。
+    installer_data = [(dist, Path("payload")), (BRAND_ICON, Path("."))]
     subprocess.run(pyinstaller_command(PROJECT_ROOT / "installer.py", "台账安装器", RELEASE_ROOT, work / "installer", spec, installer_data, onefile=True), check=True)
     return RELEASE_ROOT / "台账安装器.exe"
 
