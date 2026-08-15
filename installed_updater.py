@@ -23,6 +23,10 @@ class InstalledUpdateError(RuntimeError):
     """发布清单、下载包或安装过程不符合更新契约时的明确错误。"""
 
 
+# 发布清单固定放在公开仓库的稳定路径；发布资产本身仍由 Gitee Release 托管。
+DEFAULT_MANIFEST_URL = "https://gitee.com/juanhu6/project-management/raw/master/updates/release-manifest.json"
+
+
 @dataclass(frozen=True)
 class InstalledRelease:
     """经过格式校验的安装版发布信息。"""
@@ -100,9 +104,9 @@ def configured_manifest_url(config_root: Path) -> str:
         value = json.loads(location.read_text(encoding="utf-8")).get("update_manifest_url")
     except (OSError, json.JSONDecodeError) as error:
         raise InstalledUpdateError(f"无法读取更新配置：{location}") from error
-    if not isinstance(value, str) or not value.strip():
-        raise InstalledUpdateError("此安装尚未配置 Gitee 发布清单地址；请使用安装器的 --manifest-url 重新安装同一发布版本")
-    return value.strip()
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return DEFAULT_MANIFEST_URL
 
 
 def check_installed_update(manifest_url: str | None, config_root: Path) -> dict:
