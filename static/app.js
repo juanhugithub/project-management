@@ -519,7 +519,7 @@ async function loadDashboard() {
     { k: "已拨付资金", v: fmtMoney(d.funded_total) + " 万" },
     { k: "计划拨付", v: fmtMoney(d.plan_total) + " 万" },
     { k: "逾期节点", v: d.overdue_nodes, warn: d.overdue_nodes > 0 },
-    { k: "30 天内到期", v: d.due30_nodes, warn: d.due30_nodes > 0 },
+    { k: "3 个月内到期", v: d.due90_nodes, warn: d.due90_nodes > 0 },
     { k: "该拨未拨", v: d.overdue_funding_count + " 笔", warn: d.overdue_funding_count > 0 },
   ];
   $("#dash-cards").innerHTML = cards.map(c => `
@@ -528,7 +528,7 @@ async function loadDashboard() {
     </div>`).join("");
 
   // 待办节点（简版）
-  const rem = await api("/reminders?days=30");
+  const rem = await api("/reminders?days=90");
   const levelMap = { overdue: ["已逾期", "overdue"], red: ["≤7天", "red"], yellow: ["≤30天", "yellow"] };
   $("#dash-reminders").innerHTML = rem.length
     ? `<table class="sub-table"><thead><tr><th>项目</th><th>节点</th><th>计划</th><th>级别</th></tr></thead><tbody>
@@ -540,7 +540,7 @@ async function loadDashboard() {
        </tr>`).join("")}
        ${rem.length > 8 ? `<tr><td colspan="4" class="empty">…还有 ${rem.length - 8} 条，见「⏰ 提醒」页</td></tr>` : ""}
        </tbody></table>`
-    : `<div class="empty">🎉 30 天内没有到期节点</div>`;
+    : `<div class="empty">3 个月内没有到期节点</div>`;
   $("#dash-reminders").querySelectorAll(".dash-p").forEach(a => a.addEventListener("click", e => { e.preventDefault(); gotoProject(a.dataset.id); }));
 
   // 资金待办（该拨未拨）

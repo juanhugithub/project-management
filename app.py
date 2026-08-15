@@ -371,10 +371,11 @@ class Handler(BaseHTTPRequestHandler):
             overdue_nodes = conn.execute(
                 "SELECT COUNT(*) c FROM node WHERE status!='已完成' AND plan_date IS NOT NULL "
                 "AND julianday(plan_date) < julianday(date('now','localtime'))").fetchone()["c"]
-            due30_nodes = conn.execute(
+            # 工作台按季度观察节点，避免只看 30 天造成治理视野过短。
+            due90_nodes = conn.execute(
                 "SELECT COUNT(*) c FROM node WHERE status!='已完成' AND plan_date IS NOT NULL "
                 "AND julianday(plan_date) BETWEEN julianday(date('now','localtime')) "
-                "AND julianday(date('now','localtime'))+30").fetchone()["c"]
+                "AND julianday(date('now','localtime'))+90").fetchone()["c"]
             by_level = [clean_row(r) for r in conn.execute(
                 "SELECT COALESCE(level,'未设置') AS key, COUNT(*) AS count FROM project "
                 "GROUP BY level ORDER BY count DESC").fetchall()]
@@ -390,7 +391,7 @@ class Handler(BaseHTTPRequestHandler):
                 "overdue_funding_count": overdue_funding["c"],
                 "overdue_funding_amount": round(overdue_funding["a"], 2),
                 "overdue_nodes": overdue_nodes,
-                "due30_nodes": due30_nodes,
+                "due90_nodes": due90_nodes,
                 "by_level": by_level,
                 "by_category": by_category,
             })

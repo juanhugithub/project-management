@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>科技项目全生命周期台账</title>
-  <link rel="stylesheet" href="/static/style.css?v=0.2.0">
+  <link rel="stylesheet" href="/static/style.css?v=0.2.1">
 </head>
 <body>
   <header class="site-header">
@@ -28,9 +28,7 @@
     <section id="tab-dashboard" class="tab active">
       <div class="workspace-hero">
         <div>
-          <p class="eyebrow">OVERVIEW / 工作台</p>
-          <h1>项目运行概览</h1>
-          <p class="hero-note">关键资金与风险均按当前台账事实展示。</p>
+          <h1>项目概览</h1>
         </div>
         <div class="hero-actions" aria-label="常用操作">
           <button id="btn-hero-project" class="primary">新增项目</button>
@@ -40,7 +38,7 @@
       <div id="dash-cards" class="dash-cards"></div>
       <div class="dash-cols">
         <div class="dash-panel">
-          <div class="sub-title">待办节点（30 天内到期 + 逾期）</div>
+          <div class="sub-title">待办节点（3 个月内到期 + 逾期）</div>
           <div id="dash-reminders"></div>
         </div>
         <div class="dash-panel">
@@ -295,6 +293,6 @@
   <!-- 拖拽导入遮罩 -->
   <div class="drag-overlay">📥 松开鼠标，导入 Excel 文件</div>
 
-  <script src="/static/app.js?v=0.2.0"></script>
+  <script src="/static/app.js?v=0.2.1"></script>
 </body>
 </html>

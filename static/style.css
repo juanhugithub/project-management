@@ -126,12 +126,17 @@ nav { display:flex; flex:1; flex-direction:column; align-items:stretch; gap:4px;
 .tab-btn:hover { background:#e7e7e3; }.tab-btn.active { background:#dfdfda; color:#1f1f1f; }
 .update-check { margin-top:auto; border:1px solid #deded9; background:#f8f8f6; color:#2f6b52; }
 main { max-width:none; min-height:100vh; margin:0; padding:48px clamp(28px,5vw,76px) 80px; }
-.workspace-hero { max-width:1180px; }.workspace-hero h1 { font-size:34px; }
-.dash-cards,.dash-cols,.filters,.result-bar,.table-wrap,.detail,.notice,.guide-page,.usage-page { max-width:1180px; }
+.tab,.workspace-hero,.dash-cards,.dash-cols,.filters,.result-bar,.table-wrap,.detail,.notice,.guide-page,.usage-page,.usage-grid { width:100%; max-width:none; }
+.workspace-hero h1 { font-size:34px; }
 .table-wrap { width:100%; }
 .filters { padding:12px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.72); }
 .filters select,.filters input { background:#f8f8f6; }
 .dash-card { box-shadow:none; }.dash-panel,.usage-panel,.guide-section,.table-wrap,.detail { box-shadow:0 2px 12px rgba(31,31,31,.035); }
+/* 项目页使用固定工具列加弹性搜索框，超宽屏下仍保持同一基线。 */
+#tab-projects>.filters { display:grid; grid-template-columns:repeat(4,minmax(130px,160px)) minmax(240px,1fr) auto auto auto; align-items:center; }
+#tab-projects>.filters .primary { margin-left:0; }
+.adv-row { display:grid; grid-template-columns:180px 130px minmax(220px,1fr) auto; align-items:center; }
+.adv-row .af-field,.adv-row .af-op,.adv-row .af-val { width:100%; }
 @media (max-width:1050px) {
   body { padding-left:0; }
   .site-header { position:sticky; inset:auto; width:100%; min-height:auto; padding:10px 18px; flex-direction:row; align-items:center; border-right:0; border-bottom:1px solid var(--line); }
@@ -140,6 +145,8 @@ main { max-width:none; min-height:100vh; margin:0; padding:48px clamp(28px,5vw,7
   .tab-btn { width:auto; min-width:max-content; min-height:38px; text-align:center; }
   .update-check { margin-top:0; }
   main { padding:32px 22px 60px; }
+  #tab-projects>.filters { display:flex; }
+  .adv-row { display:flex; }
   th { top:66px; }
 }
 @media (max-width:720px) {
