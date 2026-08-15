@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import app
 import installed_updater
 
 
@@ -91,3 +92,80 @@ def test_bad_installer_hash_refuses_before_invoking_installer(tmp_path, monkeypa
         installed_updater.apply_installed_update(_file_url(manifest), program_root, data_root, config_root)
     assert database.read_bytes() == b"formal-ledger-data"
     assert not (program_root / "0.2.0").exists()
+
+
+def test_update_api_reads_install_paths_from_install_locations(tmp_path, monkeypatch):
+    """网页更新接口必须遵守安装器的双配置文件契约，并从新版本目录重启。"""
+    program_root = tmp_path / "程序目录"
+    data_root = tmp_path / "数据目录"
+    config_root = tmp_path / "配置目录"
+    config_root.mkdir()
+    current_install = config_root / "current-install.json"
+    current_install.write_text(json.dumps({
+        "current_version": "0.1.0",
+        "update_manifest_url": "https://gitee.example/release-manifest.json",
+    }, ensure_ascii=False), encoding="utf-8")
+    (config_root / "install_locations.json").write_text(json.dumps({
+        "program_root": str(program_root),
+        "data_root": str(data_root),
+    }, ensure_ascii=False), encoding="utf-8")
+
+    applied = {}
+    started = []
+
+    def fake_apply(manifest, actual_program_root, actual_data_root, actual_config_root):
+        """模拟安装器切换版本，同时记录网页接口传入的三个安装路径。"""
+        applied.update({
+            "manifest": manifest,
+            "program_root": actual_program_root,
+            "data_root": actual_data_root,
+            "config_root": actual_config_root,
+        })
+        payload = json.loads(current_install.read_text(encoding="utf-8"))
+        payload["current_version"] = "0.2.0"
+        current_install.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    class ImmediateThread:
+        """让后台更新任务在测试线程内立即执行，便于精确断言重启结果。"""
+
+        def __init__(self, target, daemon):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    class FakeServer:
+        def __init__(self):
+            self.stopped = False
+
+        def shutdown(self):
+            self.stopped = True
+
+    class FakeHandler:
+        def __init__(self):
+            self.server = FakeServer()
+            self.response = None
+
+        def _ok(self, payload):
+            self.response = (200, payload)
+
+        def _err(self, status, message):
+            self.response = (status, {"error": message})
+
+    monkeypatch.setattr(app, "INSTALL_CONFIG", str(current_install))
+    monkeypatch.setattr(installed_updater, "apply_installed_update", fake_apply)
+    monkeypatch.setattr(app.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(app.subprocess, "Popen", lambda command, **kwargs: started.append(command))
+
+    handler = FakeHandler()
+    app.Handler._api_update(handler, "POST", ["apply"])
+
+    assert handler.response == (200, {"started": True})
+    assert applied == {
+        "manifest": "https://gitee.example/release-manifest.json",
+        "program_root": program_root,
+        "data_root": data_root,
+        "config_root": config_root,
+    }
+    assert started == [[str(program_root / "0.2.0" / "项目台账" / "项目台账.exe"), "--resident"]]
+    assert handler.server.stopped is True

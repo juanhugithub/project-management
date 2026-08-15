@@ -324,13 +324,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._ok({"current_version": result["current_version"], "release_version": release.version,
                           "update_available": result["update_available"], "notes": list(release.notes)})
                 return
-            install_info = json.loads(Path(INSTALL_CONFIG).read_text(encoding="utf-8"))
-            program_root = Path(install_info["program_root"])
-            data_root = Path(install_info["data_root"])
+            # current-install.json 只记录当前版本和更新清单地址；程序、数据目录由
+            # 安装器独立写入 install_locations.json。两者必须按各自契约读取，否则
+            # 已安装版本点击更新时会因为 current-install.json 没有 program_root 而失败。
+            current_install_path = Path(INSTALL_CONFIG) if INSTALL_CONFIG else config_root / "current-install.json"
+            install_locations_path = config_root / "install_locations.json"
+            install_locations = json.loads(install_locations_path.read_text(encoding="utf-8"))
+            program_root = Path(install_locations["program_root"])
+            data_root = Path(install_locations["data_root"])
             def apply_and_restart():
                 installed_updater.apply_installed_update(manifest, program_root, data_root, config_root)
-                current = json.loads(Path(INSTALL_CONFIG).read_text(encoding="utf-8"))
-                new_exe = Path(current["program_root"]) / current["current_version"] / "项目台账" / "项目台账.exe"
+                current = json.loads(current_install_path.read_text(encoding="utf-8"))
+                # 安装器完成后会把 current_version 切换到新版本；重启路径沿用安装位置
+                # 配置中的 program_root，不能再次从版本配置中读取不存在的路径字段。
+                new_exe = program_root / current["current_version"] / "项目台账" / "项目台账.exe"
                 subprocess.Popen([str(new_exe), "--resident"], close_fds=True)
                 self.server.shutdown()
             threading.Thread(target=apply_and_restart, daemon=True).start()
