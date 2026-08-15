@@ -181,7 +181,7 @@ async function checkForUpdate() {
     });
     return { configured: true, available: true };
   } catch (error) {
-    if (error.status === 409) return { configured: false, available: false };
+    if (error.status === 409) return { configured: false, available: false, error: error.message };
     console.warn("更新检查失败", error.message);
     return { configured: false, available: false };
   }
@@ -971,7 +971,7 @@ $("#rm-days").addEventListener("change", loadReminders);
 $("#btn-rm-refresh").addEventListener("click", loadReminders);
 $("#btn-usage-refresh").addEventListener("click", loadUsage);
 $("#btn-check-update").addEventListener("click", async () => {
-  try { const result = await checkForUpdate(); if (!result.configured) toast("尚未配置 Gitee 发布清单，当前只能使用本地功能", "ok"); else if (!result.available) toast("当前已是最新版本"); }
+  try { const result = await checkForUpdate(); if (!result.configured) toast(result.error || "更新检查未完成", "err"); else if (!result.available) toast("当前已是最新版本"); }
   catch (error) { toast(error.message, "err"); }
 });
 
