@@ -124,7 +124,13 @@ body { padding-left:224px; }
 nav { display:flex; flex:1; flex-direction:column; align-items:stretch; gap:4px; }
 .tab-btn { width:100%; min-height:42px; padding:9px 12px; text-align:left; color:#696965; }
 .tab-btn:hover { background:#e7e7e3; }.tab-btn.active { background:#dfdfda; color:#1f1f1f; }
-.update-check { margin-top:auto; border:1px solid #deded9; background:#f8f8f6; color:#2f6b52; }
+.settings-nav { position:relative; margin-top:auto; }
+.settings-toggle { display:flex; align-items:center; justify-content:space-between; border:1px solid #deded9; background:#f8f8f6; }
+.settings-caret { color:#8c8c87; font-size:15px; transition:transform .18s ease; }.settings-toggle[aria-expanded="true"] .settings-caret { transform:rotate(180deg); }
+.settings-menu { position:absolute; right:0; bottom:calc(100% + 8px); left:0; z-index:30; display:grid; gap:3px; padding:7px; border:1px solid #dcdcd7; border-radius:11px; background:#fff; box-shadow:0 16px 42px rgba(31,31,31,.13); }
+.settings-menu .settings-item { width:100%; min-height:38px; margin:0; padding:8px 10px; border:0; border-radius:7px; color:#666662; background:transparent; text-align:left; box-shadow:none; }
+.settings-menu .settings-item:hover { color:#1f1f1f; background:#f0f0ed; transform:none; }.settings-menu .settings-item.active { color:#1f1f1f; background:#e8e8e4; font-weight:600; }
+.settings-menu .update-check { margin-top:3px; border-top:1px solid #ecece8; border-radius:0 0 7px 7px; color:#2f6b52; }
 main { max-width:none; min-height:100vh; margin:0; padding:48px clamp(28px,5vw,76px) 80px; }
 .tab,.workspace-hero,.dash-cards,.dash-cols,.filters,.result-bar,.table-wrap,.detail,.notice,.guide-page,.usage-page,.usage-grid { width:100%; max-width:none; }
 .workspace-hero h1 { font-size:34px; }
@@ -143,7 +149,8 @@ main { max-width:none; min-height:100vh; margin:0; padding:48px clamp(28px,5vw,7
   .brand { min-height:auto; margin:0 12px 0 0; padding:0; }
   nav { flex:1; flex-direction:row; justify-content:flex-end; overflow-x:auto; }
   .tab-btn { width:auto; min-width:max-content; min-height:38px; text-align:center; }
-  .update-check { margin-top:0; }
+  .settings-nav { position:static; margin-top:0; }.settings-toggle { gap:12px; }
+  .settings-menu { position:fixed; top:66px; right:18px; bottom:auto; left:auto; width:190px; }
   main { padding:32px 22px 60px; }
   #tab-projects>.filters { display:flex; }
   .adv-row { display:flex; }
@@ -153,6 +160,7 @@ main { max-width:none; min-height:100vh; margin:0; padding:48px clamp(28px,5vw,7
   .site-header { position:static; flex-direction:column; align-items:stretch; }
   .brand { margin:0 0 8px; }
   nav { justify-content:flex-start; }
+  .settings-menu { top:112px; right:16px; }
   main { padding:26px 16px 50px; }
 }
 

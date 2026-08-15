@@ -142,10 +142,31 @@ function toast(msg, type = "ok") {
 }
 
 /* ---------- Tab 切换 ---------- */
-$$(".tab-btn").forEach(btn => {
+const SETTINGS_TABS = new Set(["dict", "guide", "usage"]);
+const settingsToggle = $("#btn-settings-toggle");
+const settingsMenu = $("#settings-menu");
+
+function closeSettingsMenu() {
+  settingsMenu.classList.add("hidden");
+  settingsToggle.setAttribute("aria-expanded", "false");
+}
+
+settingsToggle.addEventListener("click", event => {
+  event.stopPropagation();
+  const opening = settingsMenu.classList.contains("hidden");
+  settingsMenu.classList.toggle("hidden", !opening);
+  settingsToggle.setAttribute("aria-expanded", String(opening));
+});
+document.addEventListener("click", event => {
+  if (!event.target.closest(".settings-nav")) closeSettingsMenu();
+});
+
+$$(".tab-btn[data-tab]").forEach(btn => {
   btn.addEventListener("click", () => {
     $$(".tab-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
+    settingsToggle.classList.toggle("active", SETTINGS_TABS.has(btn.dataset.tab));
+    closeSettingsMenu();
     $$(".tab").forEach(t => t.classList.remove("active"));
     $("#tab-" + btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "dashboard") loadDashboard();
@@ -1040,6 +1061,7 @@ $("#rm-days").addEventListener("change", loadReminders);
 $("#btn-rm-refresh").addEventListener("click", loadReminders);
 $("#btn-usage-refresh").addEventListener("click", loadUsage);
 $("#btn-check-update").addEventListener("click", async () => {
+  closeSettingsMenu();
   try { const result = await checkForUpdate(); if (!result.configured) toast(result.error || "更新检查未完成", "err"); else if (!result.available) toast("当前已是最新版本"); }
   catch (error) { toast(error.message, "err"); }
 });

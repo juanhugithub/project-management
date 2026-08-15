@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>科技项目全生命周期台账</title>
-  <link rel="stylesheet" href="/static/style.css?v=0.2.2">
+  <link rel="stylesheet" href="/static/style.css?v=0.2.3">
 </head>
 <body>
   <header class="site-header">
@@ -15,10 +15,15 @@
       <button data-tab="reminders" class="tab-btn">提醒</button>
       <button data-tab="enterprises" class="tab-btn">企业</button>
       <button data-tab="stats" class="tab-btn">统计</button>
-      <button data-tab="dict" class="tab-btn">配置</button>
-      <button data-tab="guide" class="tab-btn">使用助手</button>
-      <button data-tab="usage" class="tab-btn">使用分析</button>
-      <button id="btn-check-update" class="tab-btn update-check" title="检查 Gitee 是否有新版本">检查更新</button>
+      <div class="settings-nav">
+        <div id="settings-menu" class="settings-menu hidden" role="menu" aria-label="设置菜单">
+          <button data-tab="dict" class="tab-btn settings-item" role="menuitem">配置</button>
+          <button data-tab="guide" class="tab-btn settings-item" role="menuitem">使用助手</button>
+          <button data-tab="usage" class="tab-btn settings-item" role="menuitem">使用分析</button>
+          <button id="btn-check-update" class="settings-item update-check" role="menuitem" title="检查 Gitee 是否有新版本">检查更新</button>
+        </div>
+        <button id="btn-settings-toggle" class="tab-btn settings-toggle" aria-expanded="false" aria-controls="settings-menu"><span>设置</span><span class="settings-caret" aria-hidden="true">⌃</span></button>
+      </div>
     </nav>
   </header>
 
@@ -293,6 +298,6 @@
   <!-- 拖拽导入遮罩 -->
   <div class="drag-overlay">📥 松开鼠标，导入 Excel 文件</div>
 
-  <script src="/static/app.js?v=0.2.2"></script>
+  <script src="/static/app.js?v=0.2.3"></script>
 </body>
 </html>
