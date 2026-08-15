@@ -179,6 +179,8 @@ def ensure_runtime_layout(paths: RuntimePaths | None = None) -> RuntimePaths:
     """准备本机目录，并在需要时完成一次保守的旧数据目录复制。"""
     paths = paths or get_runtime_paths()
     migrate_legacy_data_if_needed(paths)
-    for directory in (paths.home, paths.backups, paths.import_archive, paths.config, paths.logs, paths.reports):
+    # data_dir 必须与其他运行目录一起创建；否则首次使用自定义盘符时，SQLite
+    # 无法创建 project.db，会在应用启动阶段直接报 unable to open database file。
+    for directory in (paths.home, paths.data_dir, paths.backups, paths.import_archive, paths.config, paths.logs, paths.reports):
         directory.mkdir(parents=True, exist_ok=True)
     return paths
