@@ -261,6 +261,72 @@ function renderProjectTable(list) {
 }
 
 /* ---------- 项目详情 ---------- */
+function buildProjectTimeline(p) {
+  // V1 只使用已经存在的项目、资金和节点事实，同一条业务记录的计划与实际分别入轴。
+  const today = new Date().toISOString().slice(0, 10);
+  const events = [];
+  const add = (date, kind, mode, title, detail, alert = false) => {
+    if (date) events.push({ date, kind, mode, title, detail, alert });
+  };
+  add(p.start_date, "stage", "actual", "项目开始", `当前阶段：${p.stage || "未设置"}`);
+  add(p.end_date, "stage", "planned", "计划完成", "项目计划结束日期", !!(p.end_date && p.end_date < today && !["已完结", "中止"].includes(p.stage)));
+  (p.fundings || []).forEach(f => {
+    const money = `${fmtMoney(f.amount)} 万元${f.batch ? ` · ${f.batch}` : ""}`;
+    add(f.plan_date, "funding", "planned", `${f.source_type || "资金"}应拨`, money, !!(f.plan_date < today && !f.actual_date));
+    add(f.actual_date, "funding", "actual", `${f.source_type || "资金"}实拨`, `${money} · ${f.status || "已记录"}`);
+  });
+  (p.nodes || []).forEach(n => {
+    const changed = !!n.has_major_change;
+    add(n.plan_date, "node", "planned", `${n.node_type || "项目节点"}计划`, n.status || "待办", changed || !!(n.plan_date < today && n.status !== "已完成"));
+    add(n.actual_date, "node", "actual", `${n.node_type || "项目节点"}完成`, changed ? "已完成 · 存在重大变更" : "已完成", changed);
+  });
+  events.sort((a, b) => a.date.localeCompare(b.date) || (a.mode === "planned" ? -1 : 1));
+  const kindLabel = { stage: "阶段", funding: "资金", node: "节点" };
+  const cards = events.map((event, index) => `
+    <article class="timeline-event ${event.mode} ${event.alert ? "alert" : ""}" data-kind="${event.kind}" data-alert="${event.alert ? "1" : "0"}">
+      <div class="timeline-card">
+        <div class="timeline-card-meta"><time>${escapeHtml(event.date)}</time><span>${kindLabel[event.kind]}</span></div>
+        <strong>${escapeHtml(event.title)}</strong>
+        <p>${escapeHtml(event.detail)}</p>
+      </div>
+      <span class="timeline-marker" aria-hidden="true"></span>
+      <span class="timeline-seq">${String(index + 1).padStart(2, "0")}</span>
+    </article>`).join("");
+  return `
+    <section class="project-timeline" aria-label="项目数字时间轴">
+      <div class="timeline-head">
+        <div><p class="timeline-kicker">PROJECT CHRONICLE</p><h4>项目数字时间轴</h4></div>
+        <div class="timeline-stage"><span>当前阶段</span>${stageBadge(p.stage)}</div>
+      </div>
+      <div class="timeline-toolbar" role="group" aria-label="时间轴筛选">
+        <button class="timeline-filter active" data-filter="all">全部</button>
+        <button class="timeline-filter" data-filter="stage">阶段</button>
+        <button class="timeline-filter" data-filter="node">节点</button>
+        <button class="timeline-filter" data-filter="funding">资金</button>
+        <button class="timeline-filter" data-filter="alert">异常</button>
+        <span class="timeline-legend"><i class="planned"></i>计划 <i class="actual"></i>实际</span>
+      </div>
+      <div class="timeline-viewport">
+        <div class="timeline-track">${cards || `<div class="timeline-empty">录入项目日期、资金或节点后，这里将自动生成时间轴。</div>`}</div>
+      </div>
+    </section>`;
+}
+
+function bindProjectTimelineFilters(root) {
+  // 筛选只改变时间轴视图，不修改任何项目事实或表格记录。
+  root.querySelectorAll(".timeline-filter").forEach(button => button.addEventListener("click", () => {
+    root.querySelectorAll(".timeline-filter").forEach(item => item.classList.toggle("active", item === button));
+    const filter = button.dataset.filter;
+    let visible = 0;
+    root.querySelectorAll(".timeline-event").forEach(event => {
+      const show = filter === "all" || event.dataset.kind === filter || (filter === "alert" && event.dataset.alert === "1");
+      event.classList.toggle("hidden", !show);
+      if (show) visible += 1;
+    });
+    root.querySelector(".timeline-track").classList.toggle("filtered-empty", visible === 0);
+  }));
+}
+
 async function showProjectDetail(id) {
   const p = await api("/projects/" + id);
   // 资金口径必须并列展示：页面不再把所有资金笼统称为“已到位”。
@@ -309,6 +375,8 @@ async function showProjectDetail(id) {
         ${kv("备注", p.note, true)}
       </div>
 
+      ${buildProjectTimeline(p)}
+
       <div class="sub-title">承担企业</div>
       <div class="detail-grid">
         ${p.enterprise ? kv("企业名称", p.enterprise.name) + kv("信用代码", p.enterprise.credit_code) + kv("区镇", p.enterprise.district) + kv("联系人", p.enterprise.contact_person + " " + (p.enterprise.contact_phone || "")) : kv("企业", "未关联")}
@@ -348,6 +416,7 @@ async function showProjectDetail(id) {
 
   const editBtn = $("#btn-detail-edit");
   if (editBtn) editBtn.addEventListener("click", () => openProjectModal(p.id));
+  bindProjectTimelineFilters($("#project-detail"));
   $("#project-detail").querySelectorAll(".f-del").forEach(b => b.addEventListener("click", async () => {
     if (!confirm("删除这笔资金？")) return;
     await api("/fundings/" + b.dataset.id, "DELETE"); toast("已删除"); showProjectDetail(id);
