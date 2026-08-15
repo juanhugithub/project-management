@@ -466,12 +466,12 @@ class Handler(BaseHTTPRequestHandler):
     def _api_template(self, method, parts, qs):
         if method != "GET":
             self._err(405, "method not allowed"); return
-        import subprocess
-        import sys
         path = os.path.join(BASE_DIR, "导入模板.xlsx")
         if not os.path.exists(path):
-            subprocess.run([sys.executable, os.path.join(BASE_DIR, "make_template.py")],
-                           cwd=BASE_DIR, check=False)
+            # 安装版中的 sys.executable 是“项目台账.exe”，不能用它执行 Python 脚本，
+            # 否则会再次启动项目网页。模板缺失时直接调用生成函数，并明确写入接口读取路径。
+            import make_template
+            make_template.main(path)
         if not os.path.exists(path):
             self._err(500, "模板生成失败"); return
         with open(path, "rb") as f:

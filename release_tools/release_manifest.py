@@ -13,6 +13,7 @@ RESOURCE_DIRECTORIES = ("ledger", "static", "templates", "migrations", "imports"
 RESOURCE_FILES = (
     "schema.sql", "VERSION", "version.py", "backup.py", "mcp_server.py", "remote_mcp.py",
     "mcp_contract.py", "make_template.py", "import_excel.py", "requirements.txt", "requirements-mcp.txt",
+    "导入模板.xlsx",
 )
 FORBIDDEN_PARTS = {"data", "backups", "imports/archive", "config", ".env"}
 

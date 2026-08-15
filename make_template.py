@@ -71,7 +71,8 @@ GUIDE = """科技项目台账 - Excel 导入模板（自动拆分类）
 """
 
 
-def main():
+def main(output_path=OUT):
+    """生成导入模板；调用方可指定输出路径，供安装版后端在当前进程内生成。"""
     wb = Workbook()
 
     # ---- 数据表优先：项目台账 放在最前（打开模板第一眼就是要填的表） ----
@@ -99,7 +100,7 @@ def main():
             cell.fill = NOTE_FILL
     guide.cell(row=1, column=1).font = Font(bold=True, size=14)
 
-    wb.save(OUT)
+    wb.save(output_path)
     print(f"[OK] 已生成单表模板：{OUT}")
     print("sheet 顺序:", wb.sheetnames)
     print("列（深绿=企业字段，深蓝=项目字段）:")
