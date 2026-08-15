@@ -116,3 +116,35 @@ main { max-width:1400px; min-height:calc(100vh - 72px); padding:44px clamp(20px,
 .modal { background:rgba(31,31,31,.28); backdrop-filter:blur(4px); }.modal-box { border:1px solid var(--line); border-top:0; border-radius:16px; background:var(--surface); box-shadow:0 28px 90px rgba(0,0,0,.18); }.drop-zone { border:1px dashed #cfcfca; border-radius:12px; background:#fafaf8; }.drop-zone:hover,.drop-zone.over { border-color:var(--green); background:var(--green-soft); }
 .guide-hero { padding:7px 0 32px; border-bottom:0; }.guide-hero h1 { font-size:clamp(32px,4vw,52px); }.guide-stamp { border:1px solid #dcece0; border-left:3px solid var(--green); border-radius:11px; background:var(--green-soft); }.guide-flow { gap:16px; padding:17px 19px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); box-shadow:var(--shadow); }.guide-flow i { color:#b5b5ae; }.guide-icon,.agent-step>b { border-radius:9px; background:var(--ink); }.code-card { border:0; border-radius:11px; background:#252525; }.toast { bottom:28px; border-radius:9px; box-shadow:0 12px 32px rgba(0,0,0,.16); }
 @media (max-width:1050px) { .site-header { min-height:66px; } th { top:66px; } } @media (max-width:720px) { main { padding-top:30px; } .site-header { min-height:auto; } .filters input[type="text"] { min-width:0; } .dash-card { min-height:108px; } }
+
+/* Kimi-style workspace: a quiet permanent sidebar and an independent work surface. */
+body { padding-left:224px; }
+.site-header { position:fixed; inset:0 auto 0 0; width:224px; min-height:100vh; padding:22px 14px 16px; flex-direction:column; align-items:stretch; justify-content:flex-start; border-right:1px solid #e9e9e5; border-bottom:0; background:#f1f1ee; backdrop-filter:none; }
+.brand { min-height:44px; padding:0 8px; margin-bottom:24px; }.brand small { display:none; }.brand-mark { box-shadow:0 5px 14px rgba(31,31,31,.14); }
+nav { display:flex; flex:1; flex-direction:column; align-items:stretch; gap:4px; }
+.tab-btn { width:100%; min-height:42px; padding:9px 12px; text-align:left; color:#696965; }
+.tab-btn:hover { background:#e7e7e3; }.tab-btn.active { background:#dfdfda; color:#1f1f1f; }
+.update-check { margin-top:auto; border:1px solid #deded9; background:#f8f8f6; color:#2f6b52; }
+main { max-width:none; min-height:100vh; margin:0; padding:48px clamp(28px,5vw,76px) 80px; }
+.workspace-hero { max-width:1180px; }.workspace-hero h1 { font-size:34px; }
+.dash-cards,.dash-cols,.filters,.result-bar,.table-wrap,.detail,.notice,.guide-page,.usage-page { max-width:1180px; }
+.table-wrap { width:100%; }
+.filters { padding:12px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.72); }
+.filters select,.filters input { background:#f8f8f6; }
+.dash-card { box-shadow:none; }.dash-panel,.usage-panel,.guide-section,.table-wrap,.detail { box-shadow:0 2px 12px rgba(31,31,31,.035); }
+@media (max-width:1050px) {
+  body { padding-left:0; }
+  .site-header { position:sticky; inset:auto; width:100%; min-height:auto; padding:10px 18px; flex-direction:row; align-items:center; border-right:0; border-bottom:1px solid var(--line); }
+  .brand { min-height:auto; margin:0 12px 0 0; padding:0; }
+  nav { flex:1; flex-direction:row; justify-content:flex-end; overflow-x:auto; }
+  .tab-btn { width:auto; min-width:max-content; min-height:38px; text-align:center; }
+  .update-check { margin-top:0; }
+  main { padding:32px 22px 60px; }
+  th { top:66px; }
+}
+@media (max-width:720px) {
+  .site-header { position:static; flex-direction:column; align-items:stretch; }
+  .brand { margin:0 0 8px; }
+  nav { justify-content:flex-start; }
+  main { padding:26px 16px 50px; }
+}
