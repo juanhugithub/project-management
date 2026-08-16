@@ -19,6 +19,7 @@
       <div class="settings-nav">
         <div id="settings-menu" class="settings-menu hidden" role="menu" aria-label="设置菜单">
           <button data-tab="dict" class="tab-btn settings-item" role="menuitem">配置</button>
+          <button data-tab="ui-text" class="tab-btn settings-item" role="menuitem">界面文字</button>
           <button data-tab="guide" class="tab-btn settings-item" role="menuitem">使用助手</button>
           <button data-tab="usage" class="tab-btn settings-item" role="menuitem">使用分析</button>
           <button id="btn-check-update" class="settings-item update-check" role="menuitem" title="检查 Gitee 是否有新版本">检查更新</button>
@@ -267,6 +268,12 @@
       <div class="workspace-hero"><div><p class="eyebrow">LOCAL INSIGHTS / 使用分析</p><h1>看看你真正用到了什么</h1><p class="hero-note">统计只保存在本机，用来决定下一轮改进重点。</p></div><button id="btn-usage-refresh" class="ghost">刷新统计</button></div>
       <div class="usage-grid"><div class="usage-panel"><h2>模块使用次数</h2><div id="usage-modules" class="usage-bars"></div></div><div class="usage-panel"><h2>最近常用动作</h2><div id="usage-actions" class="usage-bars"></div></div></div>
       <p class="usage-footnote">埋点不记录项目名称、金额、Token、IP 或表格内容。删除运行目录中的 <code>logs/usage_events.jsonl</code> 即可清空统计。</p>
+    </section>
+
+    <section id="tab-ui-text" class="tab ui-text-page">
+      <div class="workspace-hero"><div><p class="eyebrow">UI LANGUAGE / 界面文字</p><h1>界面文字配置</h1><p class="hero-note">修改按钮、导航和页面标题的显示文字。保存后立即生效，数据字段和接口不会改变。</p></div></div>
+      <div class="ui-text-toolbar"><span>只显示可安全修改的界面文字，空白内容不会保存。</span><div><button id="btn-ui-text-reset" class="ghost">恢复默认</button><button id="btn-ui-text-save" class="primary">保存文字</button></div></div>
+      <div id="ui-text-list" class="ui-text-list"></div>
     </section>
   </main>
 

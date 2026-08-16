@@ -469,15 +469,28 @@ class Handler(BaseHTTPRequestHandler):
                 for r in rows:
                     if r["key"] == "archived_years":
                         out[r["key"]] = [y for y in (r["value"] or "").split(",") if y.strip()]
+                    elif r["key"] == "ui_texts":
+                        try:
+                            out[r["key"]] = json.loads(r["value"] or "{}")
+                        except json.JSONDecodeError:
+                            out[r["key"]] = {}
                     else:
                         out[r["key"]] = r["value"]
                 self._ok(out)
             elif method == "PUT":
                 body = self._read_body()
                 years = (body or {}).get("archived_years")
-                if not isinstance(years, list):
+                ui_texts = (body or {}).get("ui_texts")
+                if years is not None and not isinstance(years, list):
                     self._err(400, "archived_years must be list"); return
-                services.set_archived_years(conn, years, (body or {}).get("reason"))
+                if years is not None:
+                    services.set_archived_years(conn, years, (body or {}).get("reason"))
+                if ui_texts is not None:
+                    if not isinstance(ui_texts, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in ui_texts.items()):
+                        self._err(400, "ui_texts must be an object of strings"); return
+                    conn.execute("INSERT INTO system_config(key,value) VALUES('ui_texts',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                                 (json.dumps(ui_texts, ensure_ascii=False),))
+                    conn.commit()
                 self._ok({"saved": True})
             else:
                 self._err(405, "method not allowed")

@@ -79,6 +79,16 @@ a { color: var(--ink); text-decoration-color: var(--green); text-underline-offse
 .page-size-label { display:inline-flex; align-items:center; gap:5px; color:var(--muted); font-size:12px; white-space:nowrap; }
 .pagination { display:flex; justify-content:center; align-items:center; gap:12px; margin:14px 0 24px; color:var(--muted); }
 .pagination button:disabled { cursor:default; opacity:.45; }
+.ui-text-toolbar { display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:18px; padding:14px 16px; border:1px solid var(--line); border-radius:12px; color:var(--muted); background:var(--surface); font-size:12px; }
+.ui-text-toolbar div { display:flex; gap:8px; }
+.ui-text-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.ui-text-group { padding:20px; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:0 2px 12px rgba(31,31,31,.035); }
+.ui-text-group h3 { margin-bottom:14px; font-size:17px; }
+.ui-text-row { display:grid; grid-template-columns:145px minmax(0,1fr); gap:6px 12px; align-items:center; padding:12px 0; border-top:1px solid #eeeeeb; }
+.ui-text-row > span { display:grid; gap:2px; }.ui-text-row b { font-size:13px; }.ui-text-row small { color:var(--muted); font:10px Consolas,monospace; }
+.ui-text-row input { min-width:0; min-height:36px; padding:7px 10px; border:1px solid var(--line); border-radius:9px; color:var(--ink); background:#fafaf8; }
+.ui-text-row em { grid-column:2; color:#999992; font-size:11px; font-style:normal; }
+@media (max-width:800px) { .ui-text-list { grid-template-columns:1fr; }.ui-text-toolbar { align-items:flex-start; flex-direction:column; }.ui-text-row { grid-template-columns:1fr; }.ui-text-row em { grid-column:auto; } }
 .enterprise-sort { display:inline-flex; align-items:center; gap:5px; min-height:24px; padding:0; border:0; border-radius:0; color:inherit; background:transparent; font:inherit; cursor:pointer; }
 .enterprise-sort:hover { color:var(--ink); background:transparent; }
 .enterprise-sort span { color:#aaa9a3; font-size:11px; }

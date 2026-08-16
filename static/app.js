@@ -8,7 +8,35 @@ const STAGES = ["申报中", "已立项", "实施中", "待验收", "已验收",
 const FUND_STATUS = ["未拨付", "已拨付", "已到账"];
 const NODE_STATUS = ["待办", "已完成", "已逾期"];
 
-const state = { dict: {}, enterprises: [], enterprisePage: { page: 1, pageSize: 50, q: "", sort: "id", direction: "desc", total: 0, totalPages: 0 }, projectPage: { page: 1, pageSize: 50, sort: "id", direction: "desc", total: 0, totalPages: 0 }, filters: {}, archivedYears: [], projectSort: null };
+const UI_TEXT_CATALOG = [
+  { group: "导航", key: "brand.title", label: "品牌名称", selector: ".brand > span", fallback: "科技项目台账" },
+  { group: "导航", key: "brand.subtitle", label: "品牌副标题", selector: ".brand small", fallback: "全生命周期管理" },
+  { group: "导航", key: "nav.dashboard", label: "工作台", selector: '[data-tab="dashboard"]', fallback: "工作台" },
+  { group: "导航", key: "nav.projects", label: "项目总览", selector: '[data-tab="projects"]', fallback: "项目总览" },
+  { group: "导航", key: "nav.reminders", label: "提醒", selector: '[data-tab="reminders"]', fallback: "提醒" },
+  { group: "导航", key: "nav.enterprises", label: "企业", selector: '[data-tab="enterprises"]', fallback: "企业" },
+  { group: "导航", key: "nav.stats", label: "资金统计", selector: '[data-tab="stats"]', fallback: "资金统计" },
+  { group: "导航", key: "nav.settings", label: "设置", selector: "#btn-settings-toggle span", fallback: "设置" },
+  { group: "工作台", key: "dashboard.title", label: "工作台标题", selector: "#tab-dashboard h1", fallback: "项目概览" },
+  { group: "工作台", key: "dashboard.add", label: "新增项目按钮", selector: "#btn-hero-project", fallback: "新增项目" },
+  { group: "工作台", key: "dashboard.refresh", label: "刷新按钮", selector: "#btn-hero-refresh", fallback: "刷新数据" },
+  { group: "列表页", key: "projects.add", label: "新增项目按钮", selector: "#btn-add-project", fallback: "＋ 新增项目" },
+  { group: "列表页", key: "projects.search", label: "项目查询按钮", selector: "#btn-search", fallback: "查询" },
+  { group: "列表页", key: "enterprises.add", label: "新增企业按钮", selector: "#btn-add-enterprise", fallback: "＋ 新增企业" },
+  { group: "列表页", key: "enterprises.search", label: "企业搜索按钮", selector: "#btn-enterprise-search", fallback: "搜索" },
+  { group: "系统", key: "settings.dict", label: "配置入口", selector: '[data-tab="dict"]', fallback: "配置" },
+  { group: "系统", key: "settings.guide", label: "使用助手入口", selector: '[data-tab="guide"]', fallback: "使用助手" },
+  { group: "系统", key: "settings.usage", label: "使用分析入口", selector: '[data-tab="usage"]', fallback: "使用分析" },
+  { group: "系统", key: "settings.update", label: "检查更新入口", selector: "#btn-check-update", fallback: "检查更新" },
+];
+const state = { dict: {}, uiTexts: {}, enterprises: [], enterprisePage: { page: 1, pageSize: 50, q: "", sort: "id", direction: "desc", total: 0, totalPages: 0 }, projectPage: { page: 1, pageSize: 50, sort: "id", direction: "desc", total: 0, totalPages: 0 }, filters: {}, archivedYears: [], projectSort: null };
+function textFor(key) { const item = UI_TEXT_CATALOG.find(x => x.key === key); return state.uiTexts[key] ?? item?.fallback ?? key; }
+function applyUiTexts() {
+  for (const item of UI_TEXT_CATALOG) {
+    const element = document.querySelector(item.selector);
+    if (element) element.textContent = textFor(item.key);
+  }
+}
 function trackUsage(module, action = "view") { fetch("/api/usage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module, action }) }).catch(() => {}); }
 
 function showLogin(message = "请登录后继续使用台账。") {
@@ -142,7 +170,7 @@ function toast(msg, type = "ok") {
 }
 
 /* ---------- Tab 切换 ---------- */
-const SETTINGS_TABS = new Set(["dict", "guide", "usage"]);
+const SETTINGS_TABS = new Set(["dict", "ui-text", "guide", "usage"]);
 const settingsToggle = $("#btn-settings-toggle");
 const settingsMenu = $("#settings-menu");
 
@@ -174,6 +202,7 @@ $$(".tab-btn[data-tab]").forEach(btn => {
     if (btn.dataset.tab === "stats") loadStats();
     trackUsage(btn.dataset.tab, "view");
     if (btn.dataset.tab === "usage") loadUsage();
+    if (btn.dataset.tab === "ui-text") renderUiTextConfig();
   });
 });
 
@@ -686,6 +715,44 @@ async function delProject(id) {
 async function loadConfig() {
   const cfg = await api("/config");
   state.archivedYears = cfg.archived_years || [];
+  state.uiTexts = cfg.ui_texts || {};
+  applyUiTexts();
+}
+
+function renderUiTextConfig() {
+  const container = $("#ui-text-list");
+  const groups = [...new Set(UI_TEXT_CATALOG.map(item => item.group))];
+  container.innerHTML = groups.map(group => `
+    <section class="ui-text-group"><h3>${escapeHtml(group)}</h3>
+      ${UI_TEXT_CATALOG.filter(item => item.group === group).map(item => `
+        <label class="ui-text-row"><span><b>${escapeHtml(item.label)}</b><small>${escapeHtml(item.key)}</small></span>
+          <input data-ui-key="${escapeHtml(item.key)}" value="${escapeHtml(textFor(item.key))}" maxlength="80">
+          <em>默认：${escapeHtml(item.fallback)}</em>
+        </label>`).join("")}
+    </section>`).join("");
+}
+
+async function saveUiTexts() {
+  const values = {};
+  $$("#ui-text-list [data-ui-key]").forEach(input => {
+    const key = input.dataset.uiKey;
+    const item = UI_TEXT_CATALOG.find(x => x.key === key);
+    const value = input.value.trim();
+    if (value && value !== item.fallback) values[key] = value;
+  });
+  await api("/config", "PUT", { ui_texts: values });
+  state.uiTexts = values;
+  applyUiTexts();
+  renderUiTextConfig();
+  toast("界面文字已保存");
+}
+
+async function resetUiTexts() {
+  await api("/config", "PUT", { ui_texts: {} });
+  state.uiTexts = {};
+  applyUiTexts();
+  renderUiTextConfig();
+  toast("已恢复默认文字");
 }
 
 /* ---------- 工作台 ---------- */
@@ -1278,6 +1345,8 @@ $("#st-by").addEventListener("change", loadStats);
 $("#rm-days").addEventListener("change", loadReminders);
 $("#btn-rm-refresh").addEventListener("click", loadReminders);
 $("#btn-usage-refresh").addEventListener("click", loadUsage);
+$("#btn-ui-text-save").addEventListener("click", saveUiTexts);
+$("#btn-ui-text-reset").addEventListener("click", resetUiTexts);
 $("#btn-check-update").addEventListener("click", async () => {
   closeSettingsMenu();
   try { const result = await checkForUpdate(); if (!result.configured) toast(result.error || "更新检查未完成", "err"); else if (!result.available) toast("当前已是最新版本"); }
@@ -1318,8 +1387,8 @@ document.querySelectorAll(".copy-btn").forEach(button => {
 /* ---------- 初始化 ---------- */
 async function loadWorkspace() {
   await loadDict();
-  await loadEnterprises();
   await loadConfig();
+  await loadEnterprises();
   await loadProjects();
   renderDict();
   await loadDashboard();
