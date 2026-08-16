@@ -221,13 +221,39 @@ async function applyAvailableUpdate(button, banner) {
   if (button) { button.disabled = true; button.textContent = "正在下载并安装…"; }
   toast("正在下载并安装新版本");
   try {
+    const pageVersion = document.querySelector('meta[name="app-version"]')?.content || "";
     await api("/update/apply", "POST", {});
-    if (banner) banner.innerHTML = "更新完成，正在重新启动…";
-    toast("更新已启动，软件将自动重启");
-    setTimeout(() => location.reload(), 5000);
+    if (banner) banner.innerHTML = "正在安装，完成后页面会自动刷新…";
+    toast("正在安装新版本，请保持页面打开");
+    await waitForUpdatedServer(pageVersion, button, banner);
   } catch (error) {
     if (button) { button.disabled = false; button.textContent = "重试更新"; }
     toast(error.message, "err");
+  }
+}
+
+async function waitForUpdatedServer(pageVersion, button, banner) {
+  // 安装时间取决于网络和磁盘速度；只有新后台真正监听端口后才刷新页面。
+  while (true) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const result = await api("/update");
+      if (result.update_state === "failed") {
+        const updateError = new Error(result.update_error || "更新安装失败");
+        updateError.status = 409;
+        throw updateError;
+      }
+      if (result.running_version && result.running_version !== pageVersion && result.running_version === result.current_version) {
+        location.replace(`/?app-version=${encodeURIComponent(result.running_version)}`);
+        return;
+      }
+    } catch (error) {
+      // 服务重启期间连接暂时中断属于正常过程；明确的安装失败才恢复按钮。
+      if (!error.status) continue;
+      if (button) { button.disabled = false; button.textContent = "重试更新"; }
+      if (banner) banner.textContent = error.message;
+      throw error;
+    }
   }
 }
 
@@ -236,14 +262,17 @@ async function checkForUpdate(autoApply = false) {
   try {
     const result = await api("/update");
     const pageVersion = document.querySelector('meta[name="app-version"]')?.content || "";
-    if (pageVersion && pageVersion === result.current_version) sessionStorage.removeItem("ledger-version-reloaded");
-    // 更新器替换程序目录后，已有浏览器标签页可能仍保留旧 DOM；版本落后时强制重载整页。
-    const reloadedFor = sessionStorage.getItem("ledger-version-reloaded");
-    if (pageVersion && result.current_version && pageVersion !== result.current_version && reloadedFor !== result.current_version) {
+    // 页面版本只与实际提供请求的后台版本比较，不能使用已写入配置但尚未启动的版本。
+    if (pageVersion && result.running_version && pageVersion !== result.running_version) {
       banner.classList.add("hidden");
-      sessionStorage.setItem("ledger-version-reloaded", result.current_version);
-      location.reload();
+      location.replace(`/?app-version=${encodeURIComponent(result.running_version)}`);
       return { configured: true, available: true, reloading: true };
+    }
+    if (result.running_version && result.current_version !== result.running_version) {
+      banner.classList.remove("hidden");
+      banner.textContent = "新版本已安装，正在等待后台切换…";
+      waitForUpdatedServer(pageVersion, null, banner);
+      return { configured: true, available: true, restarting: true };
     }
     if (!result.update_available) { banner.classList.add("hidden"); return { configured: true, available: false }; }
     if (autoApply) {

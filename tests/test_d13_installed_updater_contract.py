@@ -112,6 +112,7 @@ def test_update_api_reads_install_paths_from_install_locations(tmp_path, monkeyp
 
     applied = {}
     started = []
+    events = []
 
     def fake_apply(manifest, actual_program_root, actual_data_root, actual_config_root):
         """模拟安装器切换版本，同时记录网页接口传入的三个安装路径。"""
@@ -124,12 +125,17 @@ def test_update_api_reads_install_paths_from_install_locations(tmp_path, monkeyp
         payload = json.loads(current_install.read_text(encoding="utf-8"))
         payload["current_version"] = "0.2.0"
         current_install.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        executable = program_root / "0.2.0" / "项目台账" / "项目台账.exe"
+        executable.parent.mkdir(parents=True)
+        executable.write_bytes(b"new-app")
+        return {"updated": True}
 
     class ImmediateThread:
         """让后台更新任务在测试线程内立即执行，便于精确断言重启结果。"""
 
         def __init__(self, target, daemon):
             self.target = target
+            assert daemon is False
 
         def start(self):
             self.target()
@@ -140,6 +146,10 @@ def test_update_api_reads_install_paths_from_install_locations(tmp_path, monkeyp
 
         def shutdown(self):
             self.stopped = True
+            events.append("shutdown")
+
+        def server_close(self):
+            events.append("close")
 
     class FakeHandler:
         def __init__(self):
@@ -153,9 +163,10 @@ def test_update_api_reads_install_paths_from_install_locations(tmp_path, monkeyp
             self.response = (status, {"error": message})
 
     monkeypatch.setattr(app, "INSTALL_CONFIG", str(current_install))
+    app.UPDATE_STATE.update(phase="idle", error="")
     monkeypatch.setattr(installed_updater, "apply_installed_update", fake_apply)
     monkeypatch.setattr(app.threading, "Thread", ImmediateThread)
-    monkeypatch.setattr(app.subprocess, "Popen", lambda command, **kwargs: started.append(command))
+    monkeypatch.setattr(app.subprocess, "Popen", lambda command, **kwargs: (events.append("start"), started.append(command)))
 
     handler = FakeHandler()
     app.Handler._api_update(handler, "POST", ["apply"])
@@ -169,3 +180,43 @@ def test_update_api_reads_install_paths_from_install_locations(tmp_path, monkeyp
     }
     assert started == [[str(program_root / "0.2.0" / "项目台账" / "项目台账.exe"), "--resident"]]
     assert handler.server.stopped is True
+    assert events == ["shutdown", "close", "start"]
+
+
+def test_update_api_reports_running_version_and_background_state(tmp_path, monkeypatch):
+    """页面必须区分配置中的当前版本与真正响应请求的后台版本。"""
+    _, _, config_root, _ = _installed_config(tmp_path, version="0.2.0")
+
+    class Release:
+        version = "0.3.0"
+        notes = ("测试版本",)
+
+    class FakeHandler:
+        response = None
+
+        def _ok(self, payload):
+            self.response = payload
+
+        def _err(self, status, message):
+            raise AssertionError((status, message))
+
+    monkeypatch.setattr(app, "INSTALL_CONFIG", str(config_root / "current-install.json"))
+    monkeypatch.setattr(installed_updater, "configured_manifest_url", lambda root: "https://gitee.example/manifest.json")
+    monkeypatch.setattr(installed_updater, "check_installed_update", lambda manifest, root: {
+        "current_version": "0.2.0", "release": Release(), "update_available": True,
+    })
+    app.UPDATE_STATE.update(phase="installing", error="")
+
+    handler = FakeHandler()
+    app.Handler._api_update(handler, "GET", [])
+
+    assert handler.response["current_version"] == "0.2.0"
+    assert handler.response["running_version"] == app.APP_VERSION
+    assert handler.response["update_state"] == "installing"
+    assert handler.response["update_available"] is True
+
+
+def test_http_server_does_not_share_update_port_with_old_version():
+    """旧版本未释放端口时，新版本必须拒绝复用同一监听地址。"""
+    assert app.LedgerHTTPServer.allow_reuse_address is False
+    assert app.LedgerHTTPServer.daemon_threads is True

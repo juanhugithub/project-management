@@ -39,6 +39,86 @@ PORT = 8765
 AUTH_ENABLED = os.environ.get("LEDGER_AUTH_ENABLED", "0") == "1"
 INSTALL_CONFIG = os.environ.get("LEDGER_INSTALL_CONFIG", "")
 
+# 更新状态由网页查询接口读取。安装在线程中执行，因此必须把“正在安装”和
+# “安装失败”明确暴露给页面，不能再把启动线程误报成更新成功。
+UPDATE_STATE = {"phase": "idle", "error": ""}
+
+
+class LedgerHTTPServer(ThreadingHTTPServer):
+    """台账专用 HTTP 服务：关闭时请求线程不得继续占住旧版本端口。"""
+
+    daemon_threads = True
+    allow_reuse_address = False
+
+
+def _windows_process_image_paths():
+    """通过 Windows 原生 API 返回可查询进程的 PID、可执行文件路径及进程句柄。"""
+    import ctypes
+    from ctypes import wintypes
+
+    process_ids = (wintypes.DWORD * 4096)()
+    bytes_written = wintypes.DWORD()
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi.EnumProcesses.argtypes = [ctypes.POINTER(wintypes.DWORD), wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    psapi.EnumProcesses.restype = wintypes.BOOL
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    if not psapi.EnumProcesses(process_ids, ctypes.sizeof(process_ids), ctypes.byref(bytes_written)):
+        raise OSError(ctypes.get_last_error(), "无法枚举 Windows 进程")
+
+    paths = []
+    process_count = bytes_written.value // ctypes.sizeof(wintypes.DWORD)
+    for process_id in process_ids[:process_count]:
+        if not process_id:
+            continue
+        handle = kernel32.OpenProcess(0x1001, False, process_id)  # 查询路径并允许结束旧进程
+        if not handle:
+            continue
+        try:
+            path_buffer = ctypes.create_unicode_buffer(32768)
+            path_length = wintypes.DWORD(len(path_buffer))
+            if kernel32.QueryFullProcessImageNameW(handle, 0, path_buffer, ctypes.byref(path_length)):
+                paths.append((process_id, Path(path_buffer.value), handle))
+                handle = None
+        finally:
+            if handle:
+                kernel32.CloseHandle(handle)
+    return paths
+
+
+def stop_previous_installed_versions():
+    """安装版启动时结束同一程序目录中的旧版本，保证端口只属于当前版本。"""
+    if os.name != "nt" or not getattr(sys, "frozen", False) or not INSTALL_CONFIG:
+        return []
+    import ctypes
+
+    config_root = Path(INSTALL_CONFIG).parent
+    locations = json.loads((config_root / "install_locations.json").read_text(encoding="utf-8"))
+    program_root = Path(locations["program_root"]).resolve()
+    current_executable = Path(sys.executable).resolve()
+    stopped = []
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    for process_id, executable, handle in _windows_process_image_paths():
+        try:
+            resolved = executable.resolve()
+            # 只处理同一安装根目录、同名且不是本进程的可执行文件，避免影响其他软件。
+            if process_id == os.getpid() or resolved == current_executable:
+                continue
+            if resolved.name.casefold() != current_executable.name.casefold() or not resolved.is_relative_to(program_root):
+                continue
+            if not kernel32.TerminateProcess(handle, 0):
+                raise OSError(ctypes.get_last_error(), f"无法结束旧版本进程：{resolved}")
+            kernel32.WaitForSingleObject(handle, 5000)
+            stopped.append(str(resolved))
+        finally:
+            kernel32.CloseHandle(handle)
+    return stopped
+
 # 各表允许写入的字段（白名单，防注入、防脏数据）
 FIELDS = {
     "enterprise": ["name", "credit_code", "enterprise_type", "qualifications", "district",
@@ -252,7 +332,7 @@ class Handler(BaseHTTPRequestHandler):
             data = data.replace(b"__APP_VERSION__", APP_VERSION.encode("ascii"))
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Cache-Control", "no-cache" if rel == "index.html" else "public, max-age=31536000, immutable")
+        self.send_header("Cache-Control", "no-store, must-revalidate" if rel == "index.html" else "public, max-age=31536000, immutable")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -361,7 +441,9 @@ class Handler(BaseHTTPRequestHandler):
                 result = installed_updater.check_installed_update(manifest, config_root)
                 release = result["release"]
                 self._ok({"current_version": result["current_version"], "release_version": release.version,
-                          "update_available": result["update_available"], "notes": list(release.notes)})
+                          "running_version": APP_VERSION, "update_available": result["update_available"],
+                          "update_state": UPDATE_STATE["phase"], "update_error": UPDATE_STATE["error"],
+                          "notes": list(release.notes)})
                 return
             # current-install.json 只记录当前版本和更新清单地址；程序、数据目录由
             # 安装器独立写入 install_locations.json。两者必须按各自契约读取，否则
@@ -371,15 +453,35 @@ class Handler(BaseHTTPRequestHandler):
             install_locations = json.loads(install_locations_path.read_text(encoding="utf-8"))
             program_root = Path(install_locations["program_root"])
             data_root = Path(install_locations["data_root"])
+            if UPDATE_STATE["phase"] in {"installing", "restarting"}:
+                self._err(409, "更新正在进行中，请等待完成")
+                return
+            UPDATE_STATE.update(phase="installing", error="")
+
             def apply_and_restart():
-                installed_updater.apply_installed_update(manifest, program_root, data_root, config_root)
-                current = json.loads(current_install_path.read_text(encoding="utf-8"))
-                # 安装器完成后会把 current_version 切换到新版本；重启路径沿用安装位置
-                # 配置中的 program_root，不能再次从版本配置中读取不存在的路径字段。
-                new_exe = program_root / current["current_version"] / "项目台账" / "项目台账.exe"
-                subprocess.Popen([str(new_exe), "--resident"], close_fds=True)
-                self.server.shutdown()
-            threading.Thread(target=apply_and_restart, daemon=True).start()
+                try:
+                    result = installed_updater.apply_installed_update(manifest, program_root, data_root, config_root)
+                    if not result["updated"]:
+                        UPDATE_STATE.update(phase="idle", error="")
+                        return
+                    current = json.loads(current_install_path.read_text(encoding="utf-8"))
+                    # 安装完成后先确认新程序存在，再停止旧服务。随后显式释放监听端口，
+                    # 最后启动新版本，避免两个版本同时监听 8765 导致页面随机新旧交替。
+                    new_exe = program_root / current["current_version"] / "项目台账" / "项目台账.exe"
+                    if not new_exe.is_file():
+                        raise RuntimeError(f"更新后的主程序不存在：{new_exe}")
+                    UPDATE_STATE.update(phase="restarting", error="")
+                    self.server.shutdown()
+                    self.server.server_close()
+                    subprocess.Popen(
+                        [str(new_exe), "--resident"], env=os.environ.copy(), close_fds=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    )
+                except Exception as error:
+                    UPDATE_STATE.update(phase="failed", error=str(error))
+
+            # 关闭服务后主线程会退出；更新线程必须保持为非守护线程，确保新版本已启动。
+            threading.Thread(target=apply_and_restart, daemon=False).start()
             self._ok({"started": True})
         except Exception as error:
             self._err(409, str(error))
@@ -1199,13 +1301,15 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main(open_browser=True):
+    # 更新到新版本或重复点击启动入口时，先清理同一安装根目录中的旧版本进程。
+    stop_previous_installed_versions()
     init_db()
     try:
         import backup
         backup.auto_backup_if_needed()
     except Exception:
         pass
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    server = LedgerHTTPServer((HOST, PORT), Handler)
     url = f"http://{HOST}:{PORT}"
     print(f"科技项目台账已启动：{url}")
     print("按 Ctrl+C 停止")
@@ -1216,6 +1320,8 @@ def main(open_browser=True):
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n已停止")
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":
