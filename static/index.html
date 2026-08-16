@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>科技项目全生命周期台账</title>
-  <link rel="icon" type="image/svg+xml" href="/static/brand-icon.svg?v=0.2.9">
-  <link rel="stylesheet" href="/static/style.css?v=0.2.9">
+  <link rel="icon" type="image/svg+xml" href="/static/brand-icon.svg?v=0.2.10">
+  <link rel="stylesheet" href="/static/style.css?v=0.2.10">
 </head>
 <body>
   <header class="site-header">
-    <div class="brand"><img class="brand-mark" src="/static/brand-icon.svg?v=0.2.9" alt=""><span>科技项目台账</span><small>全生命周期管理</small></div>
+    <div class="brand"><img class="brand-mark" src="/static/brand-icon.svg?v=0.2.10" alt=""><span>科技项目台账</span><small>全生命周期管理</small></div>
     <nav>
       <button data-tab="dashboard" class="tab-btn active">工作台</button>
       <button data-tab="projects" class="tab-btn">项目总览</button>
@@ -83,8 +83,16 @@
         <table id="project-table">
           <thead>
             <tr>
-              <th>项目名称</th><th>编号/文号</th><th>层级</th><th>类型</th>
-              <th>承担企业</th><th>总金额(万)</th><th>已拨付(万)</th><th>阶段</th><th>操作</th>
+              <th data-sort="name" aria-sort="none"><button type="button" class="project-sort" data-sort="name">项目名称<span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+              <th data-sort="project_no" aria-sort="none"><button type="button" class="project-sort" data-sort="project_no">编号/文号<span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+              <th data-sort="level" aria-sort="none"><button type="button" class="project-sort" data-sort="level">层级<span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+              <th data-sort="category" aria-sort="none"><button type="button" class="project-sort" data-sort="category">类型<span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+              <th data-sort="enterprise_name" aria-sort="none"><button type="button" class="project-sort" data-sort="enterprise_name">承担企业<span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+              <th data-sort="enterprise_district" aria-sort="none"><button type="button" class="project-sort" data-sort="enterprise_district">区镇<span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+              <th class="num" data-sort="total_amount" aria-sort="none"><button type="button" class="project-sort" data-sort="total_amount">总金额(万)<span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+              <th class="num" data-sort="disbursed_total" aria-sort="none"><button type="button" class="project-sort" data-sort="disbursed_total">已拨付(万)<span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+              <th data-sort="stage" aria-sort="none"><button type="button" class="project-sort" data-sort="stage">阶段<span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -301,6 +309,6 @@
   <!-- 拖拽导入遮罩 -->
   <div class="drag-overlay">📥 松开鼠标，导入 Excel 文件</div>
 
-  <script src="/static/app.js?v=0.2.9"></script>
+  <script src="/static/app.js?v=0.2.10"></script>
 </body>
 </html>

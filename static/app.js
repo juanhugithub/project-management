@@ -8,7 +8,7 @@ const STAGES = ["申报中", "已立项", "实施中", "待验收", "已验收",
 const FUND_STATUS = ["未拨付", "已拨付", "已到账"];
 const NODE_STATUS = ["待办", "已完成", "已逾期"];
 
-const state = { dict: {}, enterprises: [], filters: {}, archivedYears: [] };
+const state = { dict: {}, enterprises: [], filters: {}, archivedYears: [], projectSort: null };
 function trackUsage(module, action = "view") { fetch("/api/usage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module, action }) }).catch(() => {}); }
 
 function showLogin(message = "请登录后继续使用台账。") {
@@ -249,12 +249,71 @@ function stageBadge(stage) {
   return `<span class="badge ${map[stage] || ""}">${escapeHtml(stage || "—")}</span>`;
 }
 
+const PROJECT_TEXT_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
+const PROJECT_SORT_FIELDS = {
+  name: { type: "text" },
+  project_no: { type: "text" },
+  level: { type: "ordered", values: () => state.dict.level || [] },
+  category: { type: "ordered", values: () => state.dict.category || [] },
+  enterprise_name: { type: "text" },
+  enterprise_district: { type: "ordered", values: () => state.dict.district || [] },
+  total_amount: { type: "number" },
+  disbursed_total: { type: "number" },
+  stage: { type: "ordered", values: () => STAGES },
+};
+
+function compareProjectValues(left, right, rule, direction) {
+  // 无论升序还是降序，未填写的字段始终排在末尾，便于优先核对有效业务数据。
+  const leftEmpty = left === null || left === undefined || left === "";
+  const rightEmpty = right === null || right === undefined || right === "";
+  if (leftEmpty || rightEmpty) return leftEmpty === rightEmpty ? 0 : (leftEmpty ? 1 : -1);
+
+  if (rule.type === "number") return (Number(left) - Number(right)) * direction;
+  if (rule.type === "ordered") {
+    const values = rule.values();
+    const leftIndex = values.indexOf(left);
+    const rightIndex = values.indexOf(right);
+    const leftKnown = leftIndex >= 0;
+    const rightKnown = rightIndex >= 0;
+    // 历史数据中已停用的字典值不参与当前配置顺序，统一放在有效字典值之后。
+    if (leftKnown !== rightKnown) return leftKnown ? -1 : 1;
+    if (leftKnown && leftIndex !== rightIndex) return (leftIndex - rightIndex) * direction;
+  }
+  return PROJECT_TEXT_COLLATOR.compare(String(left), String(right)) * direction;
+}
+
+function sortProjects(list) {
+  if (!state.projectSort) return [...list];
+  const { field, direction } = state.projectSort;
+  const rule = PROJECT_SORT_FIELDS[field];
+  if (!rule) return [...list];
+  const multiplier = direction === "desc" ? -1 : 1;
+  return list.map((project, index) => ({ project, index })).sort((left, right) => {
+    const compared = compareProjectValues(left.project[field], right.project[field], rule, multiplier);
+    return compared || left.index - right.index;
+  }).map(item => item.project);
+}
+
+function updateProjectSortHeaders() {
+  $$("#project-table th[data-sort]").forEach(header => {
+    const button = header.querySelector(".project-sort");
+    const indicator = header.querySelector(".sort-indicator");
+    const active = state.projectSort && state.projectSort.field === header.dataset.sort;
+    const direction = active ? state.projectSort.direction : null;
+    header.setAttribute("aria-sort", direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none");
+    button.classList.toggle("is-active", !!active);
+    indicator.textContent = direction === "asc" ? "↑" : direction === "desc" ? "↓" : "↕";
+  });
+}
+
 function renderProjectTable(list) {
   const tbody = $("#project-table tbody");
   $("#project-empty").classList.toggle("hidden", list.length > 0);
   $("#result-count").textContent = `共 ${list.length} 条结果`;
   const arch = state.archivedYears || [];
-  tbody.innerHTML = list.map(p => {
+  const sortedList = sortProjects(list);
+  updateProjectSortHeaders();
+  tbody.innerHTML = sortedList.map(p => {
     const isArch = !!(p.start_date && arch.includes(p.start_date.slice(0, 4)));
     return `<tr>
       <td><a href="#" class="p-name" data-id="${p.id}">${escapeHtml(p.name)}</a></td>
@@ -262,8 +321,9 @@ function renderProjectTable(list) {
       <td>${escapeHtml(p.level || "—")}</td>
       <td>${escapeHtml(p.category || "—")}</td>
       <td>${escapeHtml(p.enterprise_name || "—")}</td>
+      <td>${escapeHtml(p.enterprise_district || "—")}</td>
       <td class="num">${fmtMoney(p.total_amount)}</td>
-      <td class="num">${fmtMoney(p.funded_total)}</td>
+      <td class="num">${fmtMoney(p.disbursed_total)}</td>
       <td>${stageBadge(p.stage)}${isArch ? ` <span class="badge gray">已归档</span>` : ""}</td>
       <td>
         ${isArch
@@ -1042,7 +1102,7 @@ const EXPORT_FIELDS = [
   { k: "name", l: "项目名称" }, { k: "project_no", l: "项目编号/文号" },
   { k: "level", l: "层级" }, { k: "category", l: "类型" },
   { k: "enterprise_name", l: "承担企业" }, { k: "enterprise_district", l: "区镇" },
-  { k: "total_amount", l: "总金额(万元)" }, { k: "funded_total", l: "已到位(万元)" },
+  { k: "total_amount", l: "总金额(万元)" }, { k: "disbursed_total", l: "已拨付(万元)" },
   { k: "stage", l: "阶段" }, { k: "leader", l: "负责人" },
   { k: "contact_phone", l: "联系人手机" },
   { k: "start_date", l: "开始日期" }, { k: "end_date", l: "结束日期" },
@@ -1114,6 +1174,16 @@ $("#btn-adv-clear").addEventListener("click", () => { $("#adv-rows").innerHTML =
 $("#btn-add-project").addEventListener("click", () => openProjectModal(null));
 $("#btn-add-enterprise").addEventListener("click", () => openEnterpriseModal(null));
 $("#btn-export-current").addEventListener("click", exportCurrent);
+
+$$("#project-table .project-sort").forEach(button => button.addEventListener("click", () => {
+  const field = button.dataset.sort;
+  const current = state.projectSort;
+  state.projectSort = current && current.field === field
+    ? { field, direction: current.direction === "asc" ? "desc" : "asc" }
+    : { field, direction: "asc" };
+  renderProjectTable(state.lastProjects || []);
+  trackUsage("项目总览", "字段排序");
+}));
 
 $("#btn-st-export").addEventListener("click", exportCSV);
 $("#st-by").addEventListener("change", loadStats);

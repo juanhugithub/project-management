@@ -74,6 +74,21 @@ def test_d14_project_detail_keeps_all_six_funding_facts_visible():
     assert "已到位" not in detail_without_comments, "“已到位”口径含糊，不能出现在项目详情的资金事实区"
 
 
+def test_project_table_displays_district_and_supports_all_business_field_sorting():
+    """项目总览除操作列外全部支持排序，区镇直接显示承担企业对应的区镇。"""
+    html = read_static("index.html")
+    js = read_static("app.js")
+    sortable_fields = re.findall(r'<th[^>]*data-sort="([^"]+)"', html)
+    assert sortable_fields == [
+        "name", "project_no", "level", "category", "enterprise_name",
+        "enterprise_district", "total_amount", "disbursed_total", "stage",
+    ]
+    assert "<th>操作</th>" in html
+    assert "PROJECT_SORT_FIELDS" in js and "function sortProjects" in js
+    assert "p.enterprise_district" in js, "项目行必须显示承担企业的区镇字段"
+    assert "p.disbursed_total" in js, "已拨付列必须使用项目接口的明确资金口径"
+
+
 def test_d14_critical_information_is_not_hover_only_and_keyboard_focus_is_visible():
     """状态、错误和主操作不能靠悬停才出现；键盘焦点必须看得见。"""
     css = read_static("style.css")

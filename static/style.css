@@ -139,6 +139,13 @@ main { max-width:none; min-height:100vh; margin:0; padding:48px clamp(28px,5vw,7
 .filters { padding:12px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.72); }
 .filters select,.filters input { background:#f8f8f6; }
 .dash-card { box-shadow:none; }.dash-panel,.usage-panel,.guide-section,.table-wrap,.detail { box-shadow:0 2px 12px rgba(31,31,31,.035); }
+#project-table { min-width:1180px; }
+.project-sort { display:inline-flex; min-height:24px; align-items:center; gap:5px; padding:0; border:0; border-radius:0; color:inherit; background:transparent; box-shadow:none; font:inherit; letter-spacing:0; cursor:pointer; }
+.project-sort:hover { color:var(--ink); background:transparent; box-shadow:none; transform:none; }
+.project-sort.is-active { color:var(--green); }
+.sort-indicator { display:inline-grid; width:13px; height:18px; place-items:center; color:#aaa9a3; font-size:11px; line-height:1; }
+.project-sort.is-active .sort-indicator { color:var(--green); }
+th.num .project-sort { width:100%; justify-content:flex-end; }
 /* 项目页使用固定工具列加弹性搜索框，超宽屏下仍保持同一基线。 */
 #tab-projects>.filters { display:grid; grid-template-columns:repeat(4,minmax(130px,160px)) minmax(240px,1fr) auto auto auto; align-items:center; }
 #tab-projects>.filters .primary { margin-left:0; }
