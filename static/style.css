@@ -189,6 +189,22 @@ th.num .project-sort { width:100%; justify-content:flex-end; }
   main { padding:26px 16px 50px; }
 }
 
+/* 轻量交互反馈：只动画合成属性，不对大列表执行逐行动画。 */
+.enterprise-result-row { justify-content:space-between; gap:16px; }
+.pagination-compact { justify-content:flex-end; margin:0; }
+.pagination-compact button { min-width:64px; }
+.adv-panel:not(.hidden),.settings-menu:not(.hidden) { animation:panel-enter .16s ease-out; }
+.filters input,.filters select,.adv-row input,.adv-row select { transition:border-color .16s ease,box-shadow .16s ease,background-color .16s ease; }
+.filters input:focus,.filters select:focus,.adv-row input:focus,.adv-row select:focus { border-color:#9bb6a5; box-shadow:0 0 0 3px rgba(47,107,82,.08); background:#fff; }
+.dash-card,.dash-panel,.usage-panel,.guide-section,.detail { transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease; }
+.dash-card:hover,.dash-panel:hover,.usage-panel:hover { transform:translateY(-2px); border-color:#d8d8d3; box-shadow:0 8px 24px rgba(31,31,31,.065); }
+.pagination button:not(:disabled):active,.filters button:active { transform:scale(.97); }
+@keyframes panel-enter { from { opacity:0; transform:translateY(-5px); } to { opacity:1; transform:translateY(0); } }
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+}
+@media (max-width:720px) { .enterprise-result-row { align-items:flex-start; flex-direction:column; }.pagination-compact { justify-content:flex-start; } }
+
 /* 项目数字时间轴：用档案刻度表达计划、实际和异常，不替代下方事实明细。 */
 .project-timeline { margin:24px 0 28px; overflow:hidden; border:1px solid #deded9; border-radius:14px; background:#f8f8f6; }
 .timeline-head { display:flex; justify-content:space-between; align-items:center; gap:18px; padding:20px 22px 15px; border-bottom:1px solid #e6e6e1; }

@@ -29,7 +29,7 @@ const UI_TEXT_CATALOG = [
   { group: "系统", key: "settings.usage", label: "使用分析入口", selector: '[data-tab="usage"]', fallback: "使用分析" },
   { group: "系统", key: "settings.update", label: "检查更新入口", selector: "#btn-check-update", fallback: "检查并更新" },
 ];
-const state = { dict: {}, uiTexts: {}, enterprises: [], enterprisePage: { page: 1, pageSize: 50, q: "", sort: "id", direction: "desc", total: 0, totalPages: 0 }, projectPage: { page: 1, pageSize: 50, sort: "id", direction: "desc", total: 0, totalPages: 0 }, filters: {}, archivedYears: [], projectSort: null };
+const state = { dict: {}, uiTexts: {}, enterprises: [], enterprisePage: { page: 1, pageSize: 50, q: "", advFilters: [], sort: "id", direction: "desc", total: 0, totalPages: 0 }, projectPage: { page: 1, pageSize: 50, sort: "id", direction: "desc", total: 0, totalPages: 0 }, filters: {}, archivedYears: [], projectSort: null };
 function textFor(key) { const item = UI_TEXT_CATALOG.find(x => x.key === key); return state.uiTexts[key] ?? item?.fallback ?? key; }
 function applyUiTexts() {
   for (const item of UI_TEXT_CATALOG) {
@@ -278,6 +278,7 @@ async function loadEnterprisePage() {
   const p = state.enterprisePage;
   const params = new URLSearchParams({ page: p.page, page_size: p.pageSize });
   if (p.q) params.set("q", p.q);
+  if (p.advFilters?.length) params.set("filters", JSON.stringify(p.advFilters));
   if (p.sort) { params.set("sort", p.sort); params.set("direction", p.direction); }
   const result = await api("/enterprises?" + params.toString());
   state.enterprisePage = { ...p, ...result, totalPages: result.total_pages ?? result.totalPages ?? 0 };
@@ -702,10 +703,9 @@ function renderEnterpriseTable() {
 }
 
 function renderEnterprisePagination() {
-  const box = $("#enterprise-pagination");
   const { page, totalPages } = state.enterprisePage;
-  if (!totalPages) { box.innerHTML = ""; return; }
-  box.innerHTML = `<button class="small" data-page="prev" ${page <= 1 ? "disabled" : ""}>上一页</button><span>第 ${page} / ${totalPages} 页</span><button class="small" data-page="next" ${page >= totalPages ? "disabled" : ""}>下一页</button>`;
+  const content = totalPages ? `<button class="small" data-page="prev" ${page <= 1 ? "disabled" : ""}>上一页</button><span>第 ${page} / ${totalPages} 页</span><button class="small" data-page="next" ${page >= totalPages ? "disabled" : ""}>下一页</button>` : "";
+  ["#enterprise-pagination-top", "#enterprise-pagination"].forEach(selector => { $(selector).innerHTML = content; });
 }
 
 function openEnterpriseModal(id) {
@@ -1025,6 +1025,13 @@ const ADV_OPS = [
   { v: "eq", l: "等于" }, { v: "contains", l: "包含" },
   { v: "gte", l: "大于等于" }, { v: "lte", l: "小于等于" },
 ];
+const ENTERPRISE_ADV_FIELDS = [
+  { v: "name", l: "企业名称" }, { v: "credit_code", l: "统一信用代码" },
+  { v: "enterprise_type", l: "企业类型" }, { v: "district", l: "区镇" },
+  { v: "qualifications", l: "资质" }, { v: "contact_person", l: "联系人" },
+  { v: "contact_phone", l: "联系电话" }, { v: "address", l: "地址" },
+  { v: "project_count", l: "项目数" }, { v: "total_amount_sum", l: "累计金额(万元)" },
+];
 
 function addAdvRow(presetField, presetOp, presetVal) {
   const row = document.createElement("div");
@@ -1047,6 +1054,26 @@ function collectAdvFilters() {
     if (field && op && val) out.push({ field, op, value: val });
   });
   return out;
+}
+
+function addEnterpriseAdvRow(presetField, presetOp, presetVal) {
+  const row = document.createElement("div");
+  row.className = "adv-row";
+  row.innerHTML = `
+    <select class="af-field">${ENTERPRISE_ADV_FIELDS.map(f => `<option value="${f.v}"${f.v === presetField ? " selected" : ""}>${f.l}</option>`).join("")}</select>
+    <select class="af-op">${ADV_OPS.map(o => `<option value="${o.v}"${o.v === presetOp ? " selected" : ""}>${o.l}</option>`).join("")}</select>
+    <input class="af-val" type="text" placeholder="条件值" value="${escapeHtml(presetVal || "")}">
+    <button class="small danger af-del">删除</button>`;
+  row.querySelector(".af-del").addEventListener("click", () => row.remove());
+  $("#enterprise-adv-rows").appendChild(row);
+}
+
+function collectEnterpriseAdvFilters() {
+  return $$("#enterprise-adv-rows .adv-row").map(row => ({
+    field: row.querySelector(".af-field").value,
+    op: row.querySelector(".af-op").value,
+    value: row.querySelector(".af-val").value.trim(),
+  })).filter(item => item.field && item.op && item.value);
 }
 
 /* ---------- Excel 批量导入（新增项目、企业共用弹窗） ---------- */
@@ -1311,19 +1338,27 @@ $("#enterprise-table tbody").addEventListener("click", event => {
   else if (button.classList.contains("e-edit")) openEnterpriseModal(button.dataset.id);
   else if (button.classList.contains("e-del")) delEnterprise(button.dataset.id);
 });
-$("#enterprise-pagination").addEventListener("click", async event => {
+$$("#enterprise-pagination-top, #enterprise-pagination").forEach(container => container.addEventListener("click", async event => {
   const button = event.target.closest("button[data-page]");
   if (!button || button.disabled) return;
-  const next = button.dataset.page === "next" ? state.enterprisePage.page + 1 : state.enterprisePage.page - 1;
-  state.enterprisePage.page = next;
+  state.enterprisePage.page += button.dataset.page === "next" ? 1 : -1;
   await loadEnterprisePage();
-});
+  $("#enterprise-table").scrollIntoView({ behavior: "smooth", block: "start" });
+}));
 $("#btn-enterprise-search").addEventListener("click", async () => {
   state.enterprisePage.q = $("#enterprise-q").value.trim();
+  state.enterprisePage.advFilters = collectEnterpriseAdvFilters();
   state.enterprisePage.page = 1;
   await loadEnterprisePage();
   trackUsage("企业", "搜索");
 });
+$("#btn-enterprise-adv").addEventListener("click", () => {
+  const panel = $("#enterprise-adv-panel");
+  panel.classList.toggle("hidden");
+  if (!panel.classList.contains("hidden") && !$("#enterprise-adv-rows").children.length) addEnterpriseAdvRow();
+});
+$("#btn-enterprise-adv-add").addEventListener("click", () => addEnterpriseAdvRow());
+$("#btn-enterprise-adv-clear").addEventListener("click", () => { $("#enterprise-adv-rows").innerHTML = ""; addEnterpriseAdvRow(); });
 $("#enterprise-q").addEventListener("keydown", event => {
   if (event.key === "Enter") $("#btn-enterprise-search").click();
 });
@@ -1366,7 +1401,9 @@ $("#btn-rm-export").addEventListener("click", () => {
   trackUsage("提醒", "导出当前结果");
 });
 $("#btn-enterprise-export").addEventListener("click", () => {
-  window.location.href = "/api/export?resource=enterprises&q=" + encodeURIComponent(state.enterprisePage.q || "");
+  const params = new URLSearchParams({ resource: "enterprises", q: state.enterprisePage.q || "" });
+  if (state.enterprisePage.advFilters?.length) params.set("filters", JSON.stringify(state.enterprisePage.advFilters));
+  window.location.href = "/api/export?" + params.toString();
   trackUsage("企业", "导出当前结果");
 });
 $("#btn-usage-refresh").addEventListener("click", loadUsage);

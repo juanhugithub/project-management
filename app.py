@@ -721,11 +721,28 @@ class Handler(BaseHTTPRequestHandler):
                 if q:
                     where.append("(e.name LIKE ? OR e.credit_code LIKE ? OR e.district LIKE ? OR e.enterprise_type LIKE ?)")
                     like = f"%{q}%"; params.extend([like, like, like, like])
+                base_sql = (
+                    "SELECT e.id, e.name, e.credit_code, e.enterprise_type, e.district, e.qualifications, "
+                    "e.contact_person, e.contact_phone, e.address, "
+                    "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS project_count, "
+                    "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS total_amount_sum "
+                    f"FROM enterprise e WHERE {' AND '.join(where)}"
+                )
+                advanced_where, advanced_params = [], []
+                if qs.get("filters", [""])[0]:
+                    allowed = {"name", "credit_code", "enterprise_type", "district", "qualifications", "contact_person",
+                               "contact_phone", "address", "project_count", "total_amount_sum"}
+                    for condition in json.loads(qs["filters"][0]):
+                        field = condition.get("field"); value = condition.get("value"); op = condition.get("op")
+                        if field not in allowed or value in (None, ""): continue
+                        if op == "contains": advanced_where.append(f"CAST({field} AS TEXT) LIKE ?"); advanced_params.append(f"%{value}%")
+                        elif op in {"eq", "gte", "lte"}:
+                            operator = {"eq": "=", "gte": ">=", "lte": "<="}[op]
+                            advanced_where.append(f"{field} {operator} ?"); advanced_params.append(value)
+                advanced_sql = (" WHERE " + " AND ".join(advanced_where)) if advanced_where else ""
                 rows = conn.execute(
-                    "SELECT e.name, e.credit_code, e.enterprise_type, e.district, e.qualifications, "
-                    "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0), "
-                    "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) "
-                    f"FROM enterprise e WHERE {' AND '.join(where)} ORDER BY e.id DESC", params).fetchall()
+                    f"SELECT name, credit_code, enterprise_type, district, qualifications, project_count, total_amount_sum "
+                    f"FROM ({base_sql}) enterprise_rows{advanced_sql} ORDER BY id DESC", params + advanced_params).fetchall()
                 sheet.title = "企业结果"
                 sheet.append(["企业名称", "统一社会信用代码", "企业类型", "区镇", "资质", "项目数", "累计金额(万元)"])
                 for row in rows: sheet.append(list(row))
@@ -907,7 +924,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._ok([clean_row(r) for r in rows])
                     return
                 # 传入 page/page_size 时启用分页协议；不传参数仍保留旧数组响应，兼容外部调用者。
-                if not any(k in qs for k in ("page", "page_size", "q", "sort")):
+                if not any(k in qs for k in ("page", "page_size", "q", "sort", "filters")):
                     rows = conn.execute(
                         "SELECT e.*, "
                         "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS project_count, "
@@ -925,22 +942,45 @@ class Handler(BaseHTTPRequestHandler):
                     where.append("(e.name LIKE ? OR e.credit_code LIKE ? OR e.district LIKE ? OR e.enterprise_type LIKE ?)")
                     like = f"%{q}%"
                     params.extend([like, like, like, like])
+                advanced_where, advanced_params = [], []
+                filters_raw = qs.get("filters", [""])[0]
+                if filters_raw:
+                    field_map = {
+                        "name": "name", "credit_code": "credit_code", "enterprise_type": "enterprise_type",
+                        "district": "district", "qualifications": "qualifications", "contact_person": "contact_person",
+                        "contact_phone": "contact_phone", "address": "address", "project_count": "project_count",
+                        "total_amount_sum": "total_amount_sum",
+                    }
+                    operator_map = {"eq": "=", "gte": ">=", "lte": "<="}
+                    for condition in json.loads(filters_raw):
+                        column = field_map.get(condition.get("field")); value = condition.get("value")
+                        if not column or value in (None, ""): continue
+                        if condition.get("op") == "contains":
+                            advanced_where.append(f"CAST({column} AS TEXT) LIKE ?"); advanced_params.append(f"%{value}%")
+                        elif condition.get("op") in operator_map:
+                            advanced_where.append(f"{column} {operator_map[condition['op']]} ?"); advanced_params.append(value)
                 sort_map = {
-                    "name": "e.name", "credit_code": "e.credit_code",
-                    "enterprise_type": "e.enterprise_type", "district": "e.district",
+                    "name": "name", "credit_code": "credit_code",
+                    "enterprise_type": "enterprise_type", "district": "district",
                     "project_count": "project_count", "total_amount_sum": "total_amount_sum",
                 }
-                sort = sort_map.get(qs.get("sort", ["id"])[0], "e.id")
+                sort = sort_map.get(qs.get("sort", ["id"])[0], "id")
                 direction = "ASC" if qs.get("direction", ["desc"])[0].lower() == "asc" else "DESC"
                 where_sql = " AND ".join(where)
-                total = conn.execute(f"SELECT COUNT(*) FROM enterprise e WHERE {where_sql}", params).fetchone()[0]
-                offset = (page - 1) * page_size
-                rows = conn.execute(
+                base_sql = (
                     "SELECT e.*, "
                     "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS project_count, "
                     "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS total_amount_sum "
-                    f"FROM enterprise e WHERE {where_sql} ORDER BY {sort} {direction}, e.id DESC LIMIT ? OFFSET ?",
-                    params + [page_size, offset],
+                    f"FROM enterprise e WHERE {where_sql}"
+                )
+                advanced_sql = (" WHERE " + " AND ".join(advanced_where)) if advanced_where else ""
+                total = conn.execute(f"SELECT COUNT(*) FROM ({base_sql}) enterprise_rows{advanced_sql}",
+                                     params + advanced_params).fetchone()[0]
+                offset = (page - 1) * page_size
+                rows = conn.execute(
+                    f"SELECT * FROM ({base_sql}) enterprise_rows{advanced_sql} "
+                    f"ORDER BY {sort} {direction}, id DESC LIMIT ? OFFSET ?",
+                    params + advanced_params + [page_size, offset],
                 ).fetchall()
                 self._ok({"items": [clean_row(r) for r in rows], "total": total,
                           "page": page, "page_size": page_size,

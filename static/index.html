@@ -134,12 +134,18 @@
     <section id="tab-enterprises" class="tab">
       <div class="filters">
         <input id="enterprise-q" type="text" placeholder="搜索企业名称/信用代码/区镇">
+        <button id="btn-enterprise-adv" class="ghost">高级筛选</button>
         <button id="btn-enterprise-search" class="ghost">搜索</button>
         <button id="btn-enterprise-export" class="ghost">导出当前结果</button>
         <label class="page-size-label">每页 <select id="enterprise-page-size"><option value="50">50</option><option value="100">100</option></select> 条</label>
         <button id="btn-add-enterprise" class="primary">＋ 新增企业</button>
       </div>
-      <div id="enterprise-result-bar" class="result-bar"></div>
+      <div id="enterprise-adv-panel" class="adv-panel hidden">
+        <div class="adv-title">企业高级筛选（多条件 AND 组合）</div>
+        <div id="enterprise-adv-rows"></div>
+        <div class="adv-actions"><button id="btn-enterprise-adv-add" class="ghost small">＋ 添加条件</button><button id="btn-enterprise-adv-clear" class="ghost small">清空条件</button></div>
+      </div>
+      <div class="result-bar enterprise-result-row"><span id="enterprise-result-bar"></span><div id="enterprise-pagination-top" class="pagination pagination-compact" aria-label="企业列表顶部分页"></div></div>
       <div class="table-wrap">
         <table id="enterprise-table">
           <thead>
