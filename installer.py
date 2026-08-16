@@ -197,12 +197,6 @@ def write_location_config(config_root: Path, program_root: Path, data_root: Path
     return location_file
 
 
-def write_launcher(path: Path, command: str) -> None:
-    """写入显式的 cmd 启动入口，避免依赖 Python、Git 或 PATH。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("@echo off\r\n" + command + "\r\n", encoding="utf-8")
-
-
 def create_shortcut(shortcut: Path, target: Path, arguments: str = "", icon: Path | None = None) -> None:
     """创建 Windows 快捷方式，并显式指定品牌图标而不是继承 cmd 图标。"""
     if os.name != "nt":
@@ -226,41 +220,69 @@ def create_shortcut(shortcut: Path, target: Path, arguments: str = "", icon: Pat
         )
 
 
+def installed_environment(config_root: Path) -> dict[str, str]:
+    """为安装版程序构造明确的运行环境，路径直接使用 Windows Unicode 字符串。"""
+    environment = os.environ.copy()
+    environment["LEDGER_PATHS_CONFIG"] = str(config_root / "runtime-paths.json")
+    environment["LEDGER_INSTALL_CONFIG"] = str(config_root / "current-install.json")
+    return environment
+
+
+def launch_application(program_root: Path, config_root: Path, version: str, resident: bool = False) -> Path:
+    """不经过 cmd.exe 启动主程序，彻底避免中文安装路径被系统代码页误解码。"""
+    executable = program_root / version / "项目台账" / "项目台账.exe"
+    if not executable.is_file():
+        raise RuntimeError(f"主程序不存在：{executable}")
+    command = [str(executable)]
+    if resident:
+        command.append("--resident")
+    subprocess.Popen(
+        command,
+        env=installed_environment(config_root),
+        close_fds=True,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    return executable
+
+
+def launch_backup(program_root: Path, config_root: Path, version: str) -> Path:
+    """通过无窗口进程启动备份程序，并传入与主程序相同的数据目录配置。"""
+    executable = program_root / version / "台账备份" / "台账备份.exe"
+    if not executable.is_file():
+        raise RuntimeError(f"备份程序不存在：{executable}")
+    subprocess.Popen(
+        [str(executable)],
+        env=installed_environment(config_root),
+        close_fds=True,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    return executable
+
+
 def create_launch_entries(program_root: Path, data_root: Path, config_root: Path, version: str, desktop: Path | None = None, start_menu: Path | None = None) -> dict[str, Path]:
-    """创建启动、备份、诊断和卸载入口；它们均只操作当前安装版本。"""
+    """创建纯 EXE 启动入口，避免中文路径经过 cmd.exe 后出现代码页乱码。"""
     program = program_root / version
-    launcher_dir = config_root / "launchers"
     app_executable = program / "项目台账" / "项目台账.exe"
-    backup_executable = program / "台账备份" / "台账备份.exe"
     installer_executable = program / "台账安装器.exe"
     updater_executable = program / "台账更新器.exe"
-    runtime_config = config_root / "runtime-paths.json"
-    install_config = config_root / "current-install.json"
-    environment = f'set "LEDGER_PATHS_CONFIG={runtime_config}" && set "LEDGER_INSTALL_CONFIG={install_config}" && '
-    launchers = {
-        "启动": launcher_dir / "启动科技项目台账.cmd",
-        "备份": launcher_dir / "备份科技项目台账.cmd",
-        "诊断": launcher_dir / "诊断科技项目台账.cmd",
-        "卸载": launcher_dir / "卸载科技项目台账.cmd",
-        "更新": launcher_dir / "更新科技项目台账.cmd",
+    common = f'--program-root "{program_root}" --data-root "{data_root}" --config-root "{config_root}" --version "{version}"'
+    targets = {
+        "启动": (installer_executable, f"launch {common}"),
+        "备份": (installer_executable, f"backup {common}"),
+        "诊断": (installer_executable, f'diagnose --program-root "{program_root}" --data-root "{data_root}" --config-root "{config_root}"'),
+        "卸载": (installer_executable, f'uninstall --program-root "{program_root}" --version "{version}"'),
+        "更新": (updater_executable, f'update --program-root "{program_root}" --data-root "{data_root}" --config-root "{config_root}"'),
     }
-    write_launcher(launchers["启动"], environment + f'start "" "{app_executable}"')
-    # 使用当前用户 Run 项实现无需管理员权限的开机常驻；数据库仍在 data_root。
+    # 开机自启同样通过安装器设置运行环境，不再直接启动缺少配置的主程序。
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE) as key:
-        winreg.SetValueEx(key, PRODUCT_NAME, 0, winreg.REG_SZ, f'"{app_executable}" --resident')
-    write_launcher(launchers["备份"], environment + f'"{backup_executable}"')
-    write_launcher(launchers["诊断"], environment + f'"{installer_executable}" diagnose --program-root "{program_root}" --data-root "{data_root}"')
-    write_launcher(launchers["卸载"], environment + f'"{installer_executable}" uninstall --program-root "{program_root}" --version "{version}"')
-    write_launcher(launchers["更新"], environment + f'"{updater_executable}" update --program-root "{program_root}" --data-root "{data_root}" --config-root "{config_root}"')
+        winreg.SetValueEx(key, PRODUCT_NAME, 0, winreg.REG_SZ, f'"{installer_executable}" launch {common} --resident')
     for folder in (desktop, start_menu):
         if folder is not None:
             folder.mkdir(parents=True, exist_ok=True)
-            create_shortcut(folder / f"{PRODUCT_NAME}.lnk", launchers["启动"], icon=app_executable)
-            create_shortcut(folder / f"{PRODUCT_NAME} - 备份.lnk", launchers["备份"], icon=app_executable)
-            create_shortcut(folder / f"{PRODUCT_NAME} - 诊断.lnk", launchers["诊断"], icon=app_executable)
-            create_shortcut(folder / f"{PRODUCT_NAME} - 卸载.lnk", launchers["卸载"], icon=app_executable)
-            create_shortcut(folder / f"{PRODUCT_NAME} - 更新.lnk", launchers["更新"], icon=app_executable)
-    return launchers
+            for label, (target, arguments) in targets.items():
+                shortcut_name = PRODUCT_NAME if label == "启动" else f"{PRODUCT_NAME} - {label}"
+                create_shortcut(folder / f"{shortcut_name}.lnk", target, arguments=arguments, icon=app_executable)
+    return {label: target for label, (target, _) in targets.items()}
 
 
 def install_release(payload: Path, program_root: Path, data_root: Path, config_root: Path, desktop: Path | None = None, start_menu: Path | None = None, manifest_url: str | None = None) -> dict[str, Path | str]:
@@ -350,12 +372,13 @@ def main(argv: list[str] | None = None) -> int:
     if not command_line:
         return launch_install_gui()
     parser = argparse.ArgumentParser(description="科技项目台账当前用户安装器")
-    parser.add_argument("command", choices=("install", "uninstall", "diagnose"), nargs="?", default="install")
+    parser.add_argument("command", choices=("install", "launch", "backup", "uninstall", "diagnose"), nargs="?", default="install")
     suggested_root = default_user_root()
     parser.add_argument("--program-root", type=Path, default=suggested_root / APP_DIRECTORY, help="程序版本目录，可选择任意盘符")
     parser.add_argument("--data-root", type=Path, default=suggested_root / "user-data", help="台账数据根目录，可选择任意盘符")
     parser.add_argument("--config-root", type=Path, default=suggested_root / "config", help="本机配置目录，位于程序目录之外")
     parser.add_argument("--version")
+    parser.add_argument("--resident", action="store_true", help="启动后不自动打开浏览器，用于开机常驻")
     parser.add_argument("--manifest-url", help="Gitee 发布清单 HTTPS 地址，用于安装版人工更新")
     args = parser.parse_args(command_line)
     if args.command == "install":
@@ -364,6 +387,14 @@ def main(argv: list[str] | None = None) -> int:
             release_root() / "payload", args.program_root, args.data_root, args.config_root,
             desktop=desktop, start_menu=start_menu, manifest_url=args.manifest_url,
         )
+    elif args.command == "launch":
+        if not args.version:
+            parser.error("启动必须指定 --version")
+        result = {"launched": str(launch_application(args.program_root, args.config_root, args.version, args.resident))}
+    elif args.command == "backup":
+        if not args.version:
+            parser.error("备份必须指定 --version")
+        result = {"launched": str(launch_backup(args.program_root, args.config_root, args.version))}
     elif args.command == "uninstall":
         if not args.version:
             parser.error("卸载必须指定 --version")

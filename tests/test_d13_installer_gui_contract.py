@@ -33,6 +33,24 @@ def test_command_line_install_parameters_remain_available(monkeypatch, tmp_path)
     assert calls[0][0][1:4] == (program_root, data_root, config_root)
 
 
+def test_command_line_launch_uses_selected_version_and_resident_mode(monkeypatch, tmp_path):
+    """快捷方式调用安装器时必须走无 cmd 的启动分支，并保留开机常驻参数。"""
+    calls = []
+    monkeypatch.setattr(
+        installer, "launch_application",
+        lambda program, config, version, resident: calls.append((program, config, version, resident)) or program / version / "项目台账.exe",
+    )
+    program_root = tmp_path / "中文程序目录"
+    data_root = tmp_path / "中文数据目录"
+    config_root = tmp_path / "中文配置目录"
+
+    assert installer.main([
+        "launch", "--program-root", str(program_root), "--data-root", str(data_root),
+        "--config-root", str(config_root), "--version", "1.2.3", "--resident",
+    ]) == 0
+    assert calls == [(program_root, config_root, "1.2.3", True)]
+
+
 def test_gui_contract_exposes_three_directory_selectors_and_update_entry():
     """界面文案必须让用户选择三类目录，并明确安装后可从更新入口升级。"""
     source = inspect.getsource(installer.launch_install_gui)

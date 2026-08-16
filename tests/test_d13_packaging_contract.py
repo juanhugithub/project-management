@@ -66,3 +66,70 @@ def test_uninstall_only_removes_selected_program_version(tmp_path):
     installer.uninstall_release(program_root, "0.1.0")
     assert not program.exists()
     assert (data_root / "data" / "project.db").read_bytes() == b"formal-data"
+
+
+def test_chinese_install_paths_use_direct_exe_shortcuts_instead_of_cmd(tmp_path, monkeypatch):
+    """中文路径必须作为 Unicode 快捷方式参数保存，禁止再经过 cmd.exe 代码页解码。"""
+    program_root = tmp_path / "程序目录" / "科技项目台账"
+    data_root = tmp_path / "数据目录" / "项目数据"
+    config_root = tmp_path / "配置目录" / "本机配置"
+    desktop = tmp_path / "桌面"
+    recorded_shortcuts = []
+    recorded_registry = {}
+
+    class RegistryKey:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setattr(installer.winreg, "OpenKey", lambda *args, **kwargs: RegistryKey())
+    monkeypatch.setattr(
+        installer.winreg, "SetValueEx",
+        lambda key, name, reserved, kind, value: recorded_registry.update({name: value}),
+    )
+    monkeypatch.setattr(
+        installer, "create_shortcut",
+        lambda shortcut, target, arguments="", icon=None: recorded_shortcuts.append(
+            {"shortcut": shortcut, "target": target, "arguments": arguments, "icon": icon}
+        ),
+    )
+
+    installer.create_launch_entries(
+        program_root, data_root, config_root, "1.2.3", desktop=desktop, start_menu=None,
+    )
+
+    assert len(recorded_shortcuts) == 5
+    assert all(item["target"].suffix.lower() == ".exe" for item in recorded_shortcuts)
+    assert not list(config_root.rglob("*.cmd")), "安装入口不得生成会乱码的批处理文件"
+    start = next(item for item in recorded_shortcuts if item["shortcut"].name == "科技项目台账.lnk")
+    assert start["target"].name == "台账安装器.exe"
+    assert start["arguments"].startswith("launch ")
+    assert str(program_root) in start["arguments"] and str(config_root) in start["arguments"]
+    assert "台账安装器.exe" in recorded_registry[installer.PRODUCT_NAME]
+    assert " launch " in recorded_registry[installer.PRODUCT_NAME]
+
+
+def test_direct_launcher_sets_install_environment_without_console_window(tmp_path, monkeypatch):
+    """无 cmd 启动仍须把数据和安装配置传给主程序，并保持无黑框运行。"""
+    program_root = tmp_path / "程序根目录"
+    config_root = tmp_path / "配置根目录"
+    executable = program_root / "1.2.3" / "项目台账" / "项目台账.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"test")
+    recorded = {}
+
+    def fake_popen(command, **kwargs):
+        recorded["command"] = command
+        recorded.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(installer.subprocess, "Popen", fake_popen)
+    result = installer.launch_application(program_root, config_root, "1.2.3", resident=True)
+
+    assert result == executable
+    assert recorded["command"] == [str(executable), "--resident"]
+    assert recorded["env"]["LEDGER_PATHS_CONFIG"] == str(config_root / "runtime-paths.json")
+    assert recorded["env"]["LEDGER_INSTALL_CONFIG"] == str(config_root / "current-install.json")
+    assert recorded["creationflags"] == installer.subprocess.CREATE_NO_WINDOW
