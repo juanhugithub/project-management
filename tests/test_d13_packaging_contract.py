@@ -133,3 +133,36 @@ def test_direct_launcher_sets_install_environment_without_console_window(tmp_pat
     assert recorded["env"]["LEDGER_PATHS_CONFIG"] == str(config_root / "runtime-paths.json")
     assert recorded["env"]["LEDGER_INSTALL_CONFIG"] == str(config_root / "current-install.json")
     assert recorded["creationflags"] == installer.subprocess.CREATE_NO_WINDOW
+
+
+def test_real_windows_shortcut_round_trips_chinese_install_path(tmp_path, monkeypatch):
+    """实际生成并读取 Windows 快捷方式，确认中文路径未经过批处理编码转换。"""
+    from win32com.client import Dispatch
+
+    program_root = tmp_path / "单位电脑" / "程序目录"
+    data_root = tmp_path / "单位电脑" / "台账数据"
+    config_root = tmp_path / "单位电脑" / "本机配置"
+    desktop = tmp_path / "单位电脑" / "桌面"
+
+    class RegistryKey:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setattr(installer.winreg, "OpenKey", lambda *args, **kwargs: RegistryKey())
+    monkeypatch.setattr(installer.winreg, "SetValueEx", lambda *args, **kwargs: None)
+    installer.install_release(
+        _payload(tmp_path), program_root, data_root, config_root,
+        desktop=desktop, start_menu=None,
+    )
+
+    shortcut = Dispatch("WScript.Shell").CreateShortcut(str(desktop / "科技项目台账.lnk"))
+    expected_target = program_root / "0.1.0" / "台账安装器.exe"
+    assert Path(shortcut.TargetPath) == expected_target
+    assert shortcut.Arguments.startswith("launch ")
+    assert str(program_root) in shortcut.Arguments
+    assert str(data_root) in shortcut.Arguments
+    assert str(config_root) in shortcut.Arguments
+    assert not list(config_root.rglob("*.cmd"))
