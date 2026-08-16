@@ -8,7 +8,7 @@ const STAGES = ["申报中", "已立项", "实施中", "待验收", "已验收",
 const FUND_STATUS = ["未拨付", "已拨付", "已到账"];
 const NODE_STATUS = ["待办", "已完成", "已逾期"];
 
-const state = { dict: {}, enterprises: [], filters: {}, archivedYears: [], projectSort: null };
+const state = { dict: {}, enterprises: [], enterprisePage: { page: 1, pageSize: 50, q: "", sort: "id", direction: "desc", total: 0, totalPages: 0 }, projectPage: { page: 1, pageSize: 50, sort: "id", direction: "desc", total: 0, totalPages: 0 }, filters: {}, archivedYears: [], projectSort: null };
 function trackUsage(module, action = "view") { fetch("/api/usage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module, action }) }).catch(() => {}); }
 
 function showLogin(message = "请登录后继续使用台账。") {
@@ -223,13 +223,27 @@ function fillSelect(sel, items, placeholder) {
 }
 
 async function loadEnterprises() {
-  state.enterprises = await api("/enterprises");
+  // 企业选项与企业列表分离：项目录入需要完整名称索引，但企业页只请求当前分页。
+  state.enterprises = await api("/enterprises?lookup=1");
+  await loadEnterprisePage();
+}
+
+async function loadEnterprisePage() {
+  const p = state.enterprisePage;
+  const params = new URLSearchParams({ page: p.page, page_size: p.pageSize });
+  if (p.q) params.set("q", p.q);
+  if (p.sort) { params.set("sort", p.sort); params.set("direction", p.direction); }
+  const result = await api("/enterprises?" + params.toString());
+  state.enterprisePage = { ...p, ...result };
   renderEnterpriseTable();
 }
 
 /* ---------- 项目 ---------- */
 async function loadProjects() {
   const params = new URLSearchParams();
+  const page = state.projectPage;
+  params.set("page", page.page); params.set("page_size", page.pageSize);
+  params.set("sort", page.sort); params.set("direction", page.direction);
   if (state.filters.level) params.set("level", state.filters.level);
   if (state.filters.category) params.set("category", state.filters.category);
   if (state.filters.stage) params.set("stage", state.filters.stage);
@@ -239,9 +253,11 @@ async function loadProjects() {
     params.set("filters", JSON.stringify(state.filters.advFilters));
   }
   const qs = params.toString();
-  const list = await api("/projects" + (qs ? "?" + qs : ""));
-  state.lastProjects = list;
-  renderProjectTable(list);
+  const result = await api("/projects" + (qs ? "?" + qs : ""));
+  state.projectPage = { ...page, ...result };
+  state.lastProjects = result.items || [];
+  renderProjectTable(state.lastProjects);
+  renderProjectPagination();
 }
 
 function stageBadge(stage) {
@@ -309,7 +325,7 @@ function updateProjectSortHeaders() {
 function renderProjectTable(list) {
   const tbody = $("#project-table tbody");
   $("#project-empty").classList.toggle("hidden", list.length > 0);
-  $("#result-count").textContent = `共 ${list.length} 条结果`;
+  $("#result-count").textContent = `共 ${state.projectPage.total || list.length} 条结果，第 ${state.projectPage.page}/${state.projectPage.totalPages || 1} 页`;
   const arch = state.archivedYears || [];
   const sortedList = sortProjects(list);
   updateProjectSortHeaders();
@@ -334,11 +350,12 @@ function renderProjectTable(list) {
       </td>
     </tr>`;
   }).join("");
-  tbody.querySelectorAll(".p-name, .p-view").forEach(b => b.addEventListener("click", e => {
-    e.preventDefault(); showProjectDetail(b.dataset.id);
-  }));
-  tbody.querySelectorAll(".p-edit").forEach(b => b.addEventListener("click", () => openProjectModal(b.dataset.id)));
-  tbody.querySelectorAll(".p-del").forEach(b => b.addEventListener("click", () => delProject(b.dataset.id)));
+}
+
+function renderProjectPagination() {
+  const box = $("#project-pagination");
+  const { page, totalPages } = state.projectPage;
+  box.innerHTML = totalPages ? `<button class="small" data-page="prev" ${page <= 1 ? "disabled" : ""}>上一页</button><span>第 ${page} / ${totalPages} 页</span><button class="small" data-page="next" ${page >= totalPages ? "disabled" : ""}>下一页</button>` : "";
 }
 
 /* ---------- 项目详情 ---------- */
@@ -617,8 +634,9 @@ $("#btn-modal-save").addEventListener("click", async () => {
 /* ---------- 企业 ---------- */
 function renderEnterpriseTable() {
   const tbody = $("#enterprise-table tbody");
-  $("#enterprise-empty").classList.toggle("hidden", state.enterprises.length > 0);
-  tbody.innerHTML = state.enterprises.map(e => `
+  const items = state.enterprisePage.items || [];
+  $("#enterprise-empty").classList.toggle("hidden", items.length > 0);
+  tbody.innerHTML = items.map(e => `
     <tr>
       <td>${escapeHtml(e.name)}</td>
       <td>${escapeHtml(e.credit_code || "—")}</td>
@@ -633,9 +651,15 @@ function renderEnterpriseTable() {
         <button class="small danger e-del" data-id="${e.id}">删除</button>
       </td>
     </tr>`).join("");
-  tbody.querySelectorAll(".e-view").forEach(b => b.addEventListener("click", () => openEnterpriseDetail(b.dataset.id)));
-  tbody.querySelectorAll(".e-edit").forEach(b => b.addEventListener("click", () => openEnterpriseModal(b.dataset.id)));
-  tbody.querySelectorAll(".e-del").forEach(b => b.addEventListener("click", () => delEnterprise(b.dataset.id)));
+  $("#enterprise-result-bar").textContent = state.enterprisePage.total ? `共 ${state.enterprisePage.total} 家企业，第 ${state.enterprisePage.page}/${state.enterprisePage.totalPages} 页` : "暂无企业";
+  renderEnterprisePagination();
+}
+
+function renderEnterprisePagination() {
+  const box = $("#enterprise-pagination");
+  const { page, totalPages } = state.enterprisePage;
+  if (!totalPages) { box.innerHTML = ""; return; }
+  box.innerHTML = `<button class="small" data-page="prev" ${page <= 1 ? "disabled" : ""}>上一页</button><span>第 ${page} / ${totalPages} 页</span><button class="small" data-page="next" ${page >= totalPages ? "disabled" : ""}>下一页</button>`;
 }
 
 function openEnterpriseModal(id) {
@@ -650,7 +674,7 @@ function openEnterpriseModal(id) {
 async function delEnterprise(id) {
   if (!confirm("确定删除该企业？其下项目将变为未关联企业。")) return;
   await api("/enterprises/" + id, "DELETE");
-  toast("已删除"); await loadEnterprises();
+  toast("已删除"); await loadEnterprisePage();
 }
 
 async function delProject(id) {
@@ -1156,7 +1180,13 @@ $("#btn-search").addEventListener("click", () => {
     stage: $("#flt-stage").value, district: $("#flt-district").value,
     q: $("#flt-q").value.trim(), advFilters: collectAdvFilters(),
   };
+  state.projectPage.page = 1;
   loadProjects();
+});
+$("#project-page-size").addEventListener("change", async event => {
+  state.projectPage.pageSize = Number(event.target.value);
+  state.projectPage.page = 1;
+  await loadProjects();
 });
 ["flt-level", "flt-category", "flt-stage", "flt-district"].forEach(id => {
   $("#" + id).addEventListener("change", () => $("#btn-search").click());
@@ -1175,13 +1205,71 @@ $("#btn-add-project").addEventListener("click", () => openProjectModal(null));
 $("#btn-add-enterprise").addEventListener("click", () => openEnterpriseModal(null));
 $("#btn-export-current").addEventListener("click", exportCurrent);
 
+$("#project-table tbody").addEventListener("click", event => {
+  const button = event.target.closest("[data-id]");
+  if (!button) return;
+  if (button.matches(".p-name, .p-view")) { event.preventDefault(); showProjectDetail(button.dataset.id); }
+  else if (button.classList.contains("p-edit")) openProjectModal(button.dataset.id);
+  else if (button.classList.contains("p-del")) delProject(button.dataset.id);
+});
+$("#project-pagination").addEventListener("click", async event => {
+  const button = event.target.closest("button[data-page]");
+  if (!button || button.disabled) return;
+  state.projectPage.page += button.dataset.page === "next" ? 1 : -1;
+  await loadProjects();
+});
+
+// 企业表只在 tbody 上绑定一次事件，分页换页不会为每一行重复创建监听器。
+$("#enterprise-table tbody").addEventListener("click", event => {
+  const button = event.target.closest("button[data-id]");
+  if (!button) return;
+  if (button.classList.contains("e-view")) openEnterpriseDetail(button.dataset.id);
+  else if (button.classList.contains("e-edit")) openEnterpriseModal(button.dataset.id);
+  else if (button.classList.contains("e-del")) delEnterprise(button.dataset.id);
+});
+$("#enterprise-pagination").addEventListener("click", async event => {
+  const button = event.target.closest("button[data-page]");
+  if (!button || button.disabled) return;
+  const next = button.dataset.page === "next" ? state.enterprisePage.page + 1 : state.enterprisePage.page - 1;
+  state.enterprisePage.page = next;
+  await loadEnterprisePage();
+});
+$("#btn-enterprise-search").addEventListener("click", async () => {
+  state.enterprisePage.q = $("#enterprise-q").value.trim();
+  state.enterprisePage.page = 1;
+  await loadEnterprisePage();
+  trackUsage("企业", "搜索");
+});
+$("#enterprise-q").addEventListener("keydown", event => {
+  if (event.key === "Enter") $("#btn-enterprise-search").click();
+});
+$("#enterprise-page-size").addEventListener("change", async event => {
+  state.enterprisePage.pageSize = Number(event.target.value);
+  state.enterprisePage.page = 1;
+  await loadEnterprisePage();
+});
+$("#enterprise-table thead").addEventListener("click", async event => {
+  const button = event.target.closest(".enterprise-sort");
+  if (!button) return;
+  const field = button.dataset.sort;
+  const p = state.enterprisePage;
+  p.direction = p.sort === field && p.direction === "asc" ? "desc" : "asc";
+  p.sort = field;
+  p.page = 1;
+  await loadEnterprisePage();
+  trackUsage("企业", "字段排序");
+});
+
 $$("#project-table .project-sort").forEach(button => button.addEventListener("click", () => {
   const field = button.dataset.sort;
   const current = state.projectSort;
   state.projectSort = current && current.field === field
     ? { field, direction: current.direction === "asc" ? "desc" : "asc" }
     : { field, direction: "asc" };
-  renderProjectTable(state.lastProjects || []);
+  state.projectPage.sort = field;
+  state.projectPage.direction = state.projectSort.direction;
+  state.projectPage.page = 1;
+  loadProjects();
   trackUsage("项目总览", "字段排序");
 }));
 

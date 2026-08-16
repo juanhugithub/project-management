@@ -64,6 +64,7 @@
         <input id="flt-q" type="text" placeholder="搜索项目名/编号/企业">
         <button id="btn-adv" class="ghost">高级筛选</button>
         <button id="btn-search" class="ghost">查询</button>
+        <label class="page-size-label">每页 <select id="project-page-size"><option value="50">50</option><option value="100">100</option></select> 条</label>
         <button id="btn-add-project" class="primary">＋ 新增项目</button>
       </div>
       <div id="adv-panel" class="adv-panel hidden">
@@ -99,6 +100,7 @@
         </table>
         <div id="project-empty" class="empty hidden">暂无项目，点击右上角「新增项目」开始录入</div>
       </div>
+      <div id="project-pagination" class="pagination" aria-label="项目列表分页"></div>
 
       <div id="project-detail"></div>
     </section>
@@ -129,20 +131,31 @@
     <!-- ===== 企业 ===== -->
     <section id="tab-enterprises" class="tab">
       <div class="filters">
+        <input id="enterprise-q" type="text" placeholder="搜索企业名称/信用代码/区镇">
+        <button id="btn-enterprise-search" class="ghost">搜索</button>
+        <label class="page-size-label">每页 <select id="enterprise-page-size"><option value="50">50</option><option value="100">100</option></select> 条</label>
         <button id="btn-add-enterprise" class="primary">＋ 新增企业</button>
       </div>
+      <div id="enterprise-result-bar" class="result-bar"></div>
       <div class="table-wrap">
         <table id="enterprise-table">
           <thead>
             <tr>
-              <th>企业名称</th><th>统一信用代码</th><th>类型</th><th>区镇</th>
-              <th>资质</th><th>项目数</th><th>累计金额(万)</th><th>操作</th>
+              <th><button class="enterprise-sort" data-sort="name">企业名称<span>↕</span></button></th>
+              <th><button class="enterprise-sort" data-sort="credit_code">统一信用代码<span>↕</span></button></th>
+              <th><button class="enterprise-sort" data-sort="enterprise_type">类型<span>↕</span></button></th>
+              <th><button class="enterprise-sort" data-sort="district">区镇<span>↕</span></button></th>
+              <th>资质</th>
+              <th><button class="enterprise-sort" data-sort="project_count">项目数<span>↕</span></button></th>
+              <th><button class="enterprise-sort" data-sort="total_amount_sum">累计金额(万)<span>↕</span></button></th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
         <div id="enterprise-empty" class="empty hidden">暂无企业</div>
       </div>
+      <div id="enterprise-pagination" class="pagination" aria-label="企业列表分页"></div>
     </section>
 
     <!-- ===== 资金统计 ===== -->

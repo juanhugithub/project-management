@@ -77,6 +77,22 @@ def init_db():
         conn.commit()
         conn.close()
     # 已存在的正式库绝不在应用启动时执行 SQL。结构升级仅能由显式迁移入口完成。
+    # 企业列表的查询索引属于运行性能基础设施，不改变业务数据，启动时可幂等创建。
+    conn = get_db()
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_enterprise_active_id
+            ON enterprise(is_deleted, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_enterprise_name
+            ON enterprise(name);
+        CREATE INDEX IF NOT EXISTS idx_enterprise_district
+            ON enterprise(district, is_deleted);
+        CREATE INDEX IF NOT EXISTS idx_project_active_id
+            ON project(is_deleted, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_project_stage
+            ON project(stage, is_deleted);
+    """)
+    conn.commit()
+    conn.close()
 
 
 def clean_row(row):
@@ -800,13 +816,53 @@ class Handler(BaseHTTPRequestHandler):
         conn = get_db()
         try:
             if method == "GET" and not parts:
+                # 选项查询只返回项目表单需要的字段，避免把企业画像和统计字段带到前端。
+                if qs.get("lookup", [""])[0] == "1":
+                    rows = conn.execute(
+                        "SELECT id, name, credit_code FROM enterprise "
+                        "WHERE is_deleted=0 AND is_active=1 ORDER BY name, id"
+                    ).fetchall()
+                    self._ok([clean_row(r) for r in rows])
+                    return
+                # 传入 page/page_size 时启用分页协议；不传参数仍保留旧数组响应，兼容外部调用者。
+                if not any(k in qs for k in ("page", "page_size", "q", "sort")):
+                    rows = conn.execute(
+                        "SELECT e.*, "
+                        "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS project_count, "
+                        "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS total_amount_sum "
+                        "FROM enterprise e WHERE e.is_deleted=0 ORDER BY e.id DESC"
+                    ).fetchall()
+                    self._ok([clean_row(r) for r in rows])
+                    return
+                page = max(1, int(qs.get("page", ["1"])[0]))
+                page_size = min(100, max(20, int(qs.get("page_size", ["50"])[0])))
+                q = qs.get("q", [""])[0].strip()
+                where = ["e.is_deleted=0"]
+                params = []
+                if q:
+                    where.append("(e.name LIKE ? OR e.credit_code LIKE ? OR e.district LIKE ? OR e.enterprise_type LIKE ?)")
+                    like = f"%{q}%"
+                    params.extend([like, like, like, like])
+                sort_map = {
+                    "name": "e.name", "credit_code": "e.credit_code",
+                    "enterprise_type": "e.enterprise_type", "district": "e.district",
+                    "project_count": "project_count", "total_amount_sum": "total_amount_sum",
+                }
+                sort = sort_map.get(qs.get("sort", ["id"])[0], "e.id")
+                direction = "ASC" if qs.get("direction", ["desc"])[0].lower() == "asc" else "DESC"
+                where_sql = " AND ".join(where)
+                total = conn.execute(f"SELECT COUNT(*) FROM enterprise e WHERE {where_sql}", params).fetchone()[0]
+                offset = (page - 1) * page_size
                 rows = conn.execute(
                     "SELECT e.*, "
                     "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS project_count, "
                     "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) AS total_amount_sum "
-                    "FROM enterprise e WHERE e.is_deleted=0 ORDER BY e.id DESC"
+                    f"FROM enterprise e WHERE {where_sql} ORDER BY {sort} {direction}, e.id DESC LIMIT ? OFFSET ?",
+                    params + [page_size, offset],
                 ).fetchall()
-                self._ok([clean_row(r) for r in rows])
+                self._ok({"items": [clean_row(r) for r in rows], "total": total,
+                          "page": page, "page_size": page_size,
+                          "total_pages": (total + page_size - 1) // page_size})
             elif method == "GET" and len(parts) == 1:
                 eid = int(parts[0])
                 ent = conn.execute("SELECT * FROM enterprise WHERE id=? AND is_deleted=0", (eid,)).fetchone()
@@ -914,10 +970,19 @@ class Handler(BaseHTTPRequestHandler):
                 scoped_district = self.current_user.get("district_scope")
                 if scoped_district and requested_district and requested_district != scoped_district:
                     self._ok([]); return
-                self._ok(queries.project_list(conn, {
+                project_filters = {
                     "level": qs.get("level", [None])[0], "category": qs.get("category", [None])[0],
                     "stage": qs.get("stage", [None])[0], "enterprise_id": qs.get("enterprise_id", [None])[0],
-                    "district": scoped_district or requested_district, "query": qs.get("q", [None])[0]}))
+                    "district": scoped_district or requested_district, "query": qs.get("q", [None])[0]}
+                if filters_raw:
+                    try: project_filters["adv_filters"] = json.loads(filters_raw)
+                    except (ValueError, TypeError): project_filters["adv_filters"] = []
+                if "page" in qs or "page_size" in qs or "sort" in qs:
+                    project_filters.update({"page": qs.get("page", ["1"])[0],
+                                            "page_size": qs.get("page_size", ["50"])[0],
+                                            "sort": qs.get("sort", ["id"])[0],
+                                            "direction": qs.get("direction", ["desc"])[0]})
+                self._ok(queries.project_list(conn, project_filters))
             elif method == "GET" and len(parts) == 1:
                 pid = int(parts[0])
                 result = queries.project_detail(conn, pid)

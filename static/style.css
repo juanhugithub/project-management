@@ -76,6 +76,12 @@ a { color: var(--ink); text-decoration-color: var(--green); text-underline-offse
 .dict-item { display:inline-flex; align-items:center; gap:6px; cursor:grab; }.dict-item.dragging { opacity:.45; border:1px dashed var(--green); }.drag-grip { color:var(--muted); font-size:12px; letter-spacing:-4px; }.dict-inactive { flex-basis:100%; padding:7px 10px; border:1px dashed var(--line); background:#f2f1ec; }.dict-inactive summary { cursor:pointer; color:var(--muted); font-size:12px; }.dict-inactive .dict-tags { margin-top:8px; }.dict-inactive .dict-item { cursor:default; }
 .update-banner { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px; padding:11px 14px; border-left:3px solid var(--green); color:#174d36; background:var(--green-soft); }
 .update-check { color:var(--muted); white-space:nowrap; }
+.page-size-label { display:inline-flex; align-items:center; gap:5px; color:var(--muted); font-size:12px; white-space:nowrap; }
+.pagination { display:flex; justify-content:center; align-items:center; gap:12px; margin:14px 0 24px; color:var(--muted); }
+.pagination button:disabled { cursor:default; opacity:.45; }
+.enterprise-sort { display:inline-flex; align-items:center; gap:5px; min-height:24px; padding:0; border:0; border-radius:0; color:inherit; background:transparent; font:inherit; cursor:pointer; }
+.enterprise-sort:hover { color:var(--ink); background:transparent; }
+.enterprise-sort span { color:#aaa9a3; font-size:11px; }
 
 /* 使用助手：值班手册式的信息层级，帮助非技术使用者完成首轮接入。 */
 .guide-page { --guide-blue:#315d69; --guide-blue-soft:#e8f0f0; }
