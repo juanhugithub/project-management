@@ -74,6 +74,17 @@ def _upload_asset(release_id, package):
         raise RuntimeError(f"上传 Release 资产失败 {error.code}: {detail}") from error
 
 
+def _prune_old_releases(keep=5):
+    """发布成功后只保留最近的 Release，释放 Gitee 仓库附件配额。"""
+    releases = sorted(_request("/releases"), key=lambda item: item.get("created_at", ""), reverse=True)
+    for release in releases[keep:]:
+        try:
+            _request(f"/releases/{release['id']}", "DELETE")
+        except json.JSONDecodeError:
+            # Gitee 删除成功时返回空响应体，HTTP 请求本身已经完成。
+            pass
+
+
 def publish():
     _preflight_token()
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
@@ -96,6 +107,7 @@ def publish():
     subprocess.run(["git", "add", str(MANIFEST)], cwd=ROOT, check=True)
     subprocess.run(["git", "commit", "-m", f"release: publish {version} manifest"], cwd=ROOT, check=False)
     subprocess.run(["git", "push", "origin", "master"], cwd=ROOT, check=True)
+    _prune_old_releases(keep=5)
     print(f"已发布 Gitee Release {version}，安装包 SHA-256：{digest}")
 
 
