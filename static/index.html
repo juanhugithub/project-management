@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>科技项目全生命周期台账</title>
-  <link rel="icon" type="image/svg+xml" href="/static/brand-icon.svg?v=0.2.12">
-  <link rel="stylesheet" href="/static/style.css?v=0.2.12">
+  <link rel="icon" type="image/svg+xml" href="/static/brand-icon.svg?v=__APP_VERSION__">
+  <link rel="stylesheet" href="/static/style.css?v=__APP_VERSION__">
 </head>
 <body>
   <header class="site-header">
-    <div class="brand"><img class="brand-mark" src="/static/brand-icon.svg?v=0.2.12" alt=""><span>科技项目台账</span><small>全生命周期管理</small></div>
+    <div class="brand"><img class="brand-mark" src="/static/brand-icon.svg?v=__APP_VERSION__" alt=""><span>科技项目台账</span><small>全生命周期管理</small></div>
     <nav>
       <button data-tab="dashboard" class="tab-btn active">工作台</button>
       <button data-tab="projects" class="tab-btn">项目总览</button>
@@ -22,7 +22,7 @@
           <button data-tab="ui-text" class="tab-btn settings-item" role="menuitem">界面文字</button>
           <button data-tab="guide" class="tab-btn settings-item" role="menuitem">使用助手</button>
           <button data-tab="usage" class="tab-btn settings-item" role="menuitem">使用分析</button>
-          <button id="btn-check-update" class="settings-item update-check" role="menuitem" title="检查 Gitee 是否有新版本">检查更新</button>
+          <button id="btn-check-update" class="settings-item update-check" role="menuitem" title="检查并安装 Gitee 新版本">检查并更新</button>
         </div>
         <button id="btn-settings-toggle" class="tab-btn settings-toggle" aria-expanded="false" aria-controls="settings-menu"><span>设置</span><span class="settings-caret" aria-hidden="true">⌃</span></button>
       </div>
@@ -331,6 +331,6 @@
   <!-- 拖拽导入遮罩 -->
   <div class="drag-overlay">📥 松开鼠标，导入 Excel 文件</div>
 
-  <script src="/static/app.js?v=0.2.12"></script>
+  <script src="/static/app.js?v=__APP_VERSION__"></script>
 </body>
 </html>

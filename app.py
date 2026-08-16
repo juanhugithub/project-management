@@ -24,6 +24,7 @@ from ledger import field_mapping
 from ledger import security
 import usage_tracker
 from runtime_paths import ensure_runtime_layout, get_runtime_paths
+from version import get_version
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 安装目录只保存代码和资源；所有会变化的台账材料进入用户选择的运行目录。
@@ -32,6 +33,7 @@ DB_PATH = str(RUNTIME_PATHS.database)
 IMPORT_ARCHIVE_DIR = str(RUNTIME_PATHS.import_archive)
 SCHEMA_PATH = os.path.join(BASE_DIR, "schema.sql")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+APP_VERSION = get_version(BASE_DIR)
 HOST = "127.0.0.1"
 PORT = 8765
 AUTH_ENABLED = os.environ.get("LEDGER_AUTH_ENABLED", "0") == "1"
@@ -246,8 +248,11 @@ class Handler(BaseHTTPRequestHandler):
         content_type = MIME.get(ext, "application/octet-stream")
         with open(file_path, "rb") as f:
             data = f.read()
+        if rel == "index.html":
+            data = data.replace(b"__APP_VERSION__", APP_VERSION.encode("ascii"))
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-cache" if rel == "index.html" else "public, max-age=31536000, immutable")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

@@ -27,7 +27,7 @@ const UI_TEXT_CATALOG = [
   { group: "系统", key: "settings.dict", label: "配置入口", selector: '[data-tab="dict"]', fallback: "配置" },
   { group: "系统", key: "settings.guide", label: "使用助手入口", selector: '[data-tab="guide"]', fallback: "使用助手" },
   { group: "系统", key: "settings.usage", label: "使用分析入口", selector: '[data-tab="usage"]', fallback: "使用分析" },
-  { group: "系统", key: "settings.update", label: "检查更新入口", selector: "#btn-check-update", fallback: "检查更新" },
+  { group: "系统", key: "settings.update", label: "检查更新入口", selector: "#btn-check-update", fallback: "检查并更新" },
 ];
 const state = { dict: {}, uiTexts: {}, enterprises: [], enterprisePage: { page: 1, pageSize: 50, q: "", sort: "id", direction: "desc", total: 0, totalPages: 0 }, projectPage: { page: 1, pageSize: 50, sort: "id", direction: "desc", total: 0, totalPages: 0 }, filters: {}, archivedYears: [], projectSort: null };
 function textFor(key) { const item = UI_TEXT_CATALOG.find(x => x.key === key); return state.uiTexts[key] ?? item?.fallback ?? key; }
@@ -217,17 +217,34 @@ async function loadUsage() {
   render(data.modules || [], "#usage-modules"); render(data.actions || [], "#usage-actions");
 }
 
-async function checkForUpdate() {
+async function applyAvailableUpdate(button, banner) {
+  if (button) { button.disabled = true; button.textContent = "正在下载并安装…"; }
+  toast("正在下载并安装新版本");
+  try {
+    await api("/update/apply", "POST", {});
+    if (banner) banner.innerHTML = "更新完成，正在重新启动…";
+    toast("更新已启动，软件将自动重启");
+    setTimeout(() => location.reload(), 5000);
+  } catch (error) {
+    if (button) { button.disabled = false; button.textContent = "重试更新"; }
+    toast(error.message, "err");
+  }
+}
+
+async function checkForUpdate(autoApply = false) {
   const banner = $("#update-banner");
   try {
     const result = await api("/update");
     if (!result.update_available) { banner.classList.add("hidden"); return { configured: true, available: false }; }
+    if (autoApply) {
+      banner.classList.add("hidden");
+      await applyAvailableUpdate($("#btn-check-update"), null);
+      return { configured: true, available: true, applying: true };
+    }
     banner.innerHTML = `<span><b>发现新版本 ${escapeHtml(result.release_version)}</b>${(result.notes || []).length ? "：" + escapeHtml(result.notes.join("；")) : ""}</span><button id="btn-apply-update" class="primary small">下载并更新</button>`;
     banner.classList.remove("hidden");
     $("#btn-apply-update").addEventListener("click", async () => {
-      const button = $("#btn-apply-update"); button.disabled = true; button.textContent = "正在下载并安装…";
-      try { await api("/update/apply", "POST", {}); banner.innerHTML = "更新完成，正在重新启动…"; setTimeout(() => location.reload(), 5000); }
-      catch (error) { button.disabled = false; button.textContent = "重试更新"; toast(error.message, "err"); }
+      await applyAvailableUpdate($("#btn-apply-update"), banner);
     });
     return { configured: true, available: true };
   } catch (error) {
@@ -1357,7 +1374,7 @@ $("#btn-ui-text-save").addEventListener("click", saveUiTexts);
 $("#btn-ui-text-reset").addEventListener("click", resetUiTexts);
 $("#btn-check-update").addEventListener("click", async () => {
   closeSettingsMenu();
-  try { const result = await checkForUpdate(); if (!result.configured) toast(result.error || "更新检查未完成", "err"); else if (!result.available) toast("当前已是最新版本"); }
+  try { const result = await checkForUpdate(true); if (!result.configured) toast(result.error || "更新检查未完成", "err"); else if (!result.available) toast("当前已是最新版本"); }
   catch (error) { toast(error.message, "err"); }
 });
 
