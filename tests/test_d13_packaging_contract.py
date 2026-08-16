@@ -91,7 +91,7 @@ def test_chinese_install_paths_use_direct_exe_shortcuts_instead_of_cmd(tmp_path,
     )
     monkeypatch.setattr(
         installer, "create_shortcut",
-        lambda shortcut, target, arguments="", icon=None: recorded_shortcuts.append(
+        lambda shortcut, target, arguments=(), icon=None: recorded_shortcuts.append(
             {"shortcut": shortcut, "target": target, "arguments": arguments, "icon": icon}
         ),
     )
@@ -105,7 +105,7 @@ def test_chinese_install_paths_use_direct_exe_shortcuts_instead_of_cmd(tmp_path,
     assert not list(config_root.rglob("*.cmd")), "安装入口不得生成会乱码的批处理文件"
     start = next(item for item in recorded_shortcuts if item["shortcut"].name == "科技项目台账.lnk")
     assert start["target"].name == "台账安装器.exe"
-    assert start["arguments"].startswith("launch ")
+    assert start["arguments"][0] == "launch"
     assert str(program_root) in start["arguments"] and str(config_root) in start["arguments"]
     assert "台账安装器.exe" in recorded_registry[installer.PRODUCT_NAME]
     assert " launch " in recorded_registry[installer.PRODUCT_NAME]
@@ -161,8 +161,9 @@ def test_real_windows_shortcut_round_trips_chinese_install_path(tmp_path, monkey
     shortcut = Dispatch("WScript.Shell").CreateShortcut(str(desktop / "科技项目台账.lnk"))
     expected_target = program_root / "0.1.0" / "台账安装器.exe"
     assert Path(shortcut.TargetPath) == expected_target
-    assert shortcut.Arguments.startswith("launch ")
+    assert shortcut.Arguments.startswith('"launch" ')
     assert str(program_root) in shortcut.Arguments
     assert str(data_root) in shortcut.Arguments
     assert str(config_root) in shortcut.Arguments
+    assert f"\\{program_root}\\" not in shortcut.Arguments
     assert not list(config_root.rglob("*.cmd"))

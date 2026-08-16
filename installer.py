@@ -197,7 +197,7 @@ def write_location_config(config_root: Path, program_root: Path, data_root: Path
     return location_file
 
 
-def create_shortcut(shortcut: Path, target: Path, arguments: str = "", icon: Path | None = None) -> None:
+def create_shortcut(shortcut: Path, target: Path, arguments: tuple[str, ...] = (), icon: Path | None = None) -> None:
     """创建 Windows 快捷方式，并显式指定品牌图标而不是继承 cmd 图标。"""
     if os.name != "nt":
         raise RuntimeError("桌面快捷方式只能在 Windows 上创建")
@@ -205,17 +205,21 @@ def create_shortcut(shortcut: Path, target: Path, arguments: str = "", icon: Pat
         'var shell = new ActiveXObject("WScript.Shell");\n'
         'var link = shell.CreateShortcut(WScript.Arguments.Item(0));\n'
         'link.TargetPath = WScript.Arguments.Item(1);\n'
-        'link.Arguments = WScript.Arguments.Item(2);\n'
-        'link.WorkingDirectory = WScript.Arguments.Item(3);\n'
-        'link.IconLocation = WScript.Arguments.Item(4);\n'
+        'link.WorkingDirectory = WScript.Arguments.Item(2);\n'
+        'link.IconLocation = WScript.Arguments.Item(3);\n'
+        'var commandArguments = [];\n'
+        'for (var index = 4; index < WScript.Arguments.length; index++) {\n'
+        '  commandArguments.push("\\\"" + WScript.Arguments.Item(index).replace(/"/g, "\\\\\\\"") + "\\\"");\n'
+        '}\n'
+        'link.Arguments = commandArguments.join(" ");\n'
         'link.Save();\n'
     )
     with tempfile.TemporaryDirectory(prefix="ledger-shortcut-") as temporary:
         script_path = Path(temporary) / "create-shortcut.js"
         script_path.write_text(script, encoding="utf-8")
         subprocess.run(
-            ["cscript.exe", "//nologo", str(script_path), str(shortcut), str(target), arguments,
-             str(target.parent), str(icon or target)],
+            ["cscript.exe", "//nologo", str(script_path), str(shortcut), str(target),
+             str(target.parent), str(icon or target), *arguments],
             check=True,
         )
 
@@ -265,17 +269,29 @@ def create_launch_entries(program_root: Path, data_root: Path, config_root: Path
     app_executable = program / "项目台账" / "项目台账.exe"
     installer_executable = program / "台账安装器.exe"
     updater_executable = program / "台账更新器.exe"
-    common = f'--program-root "{program_root}" --data-root "{data_root}" --config-root "{config_root}" --version "{version}"'
+    common = (
+        "--program-root", str(program_root), "--data-root", str(data_root),
+        "--config-root", str(config_root), "--version", version,
+    )
     targets = {
-        "启动": (installer_executable, f"launch {common}"),
-        "备份": (installer_executable, f"backup {common}"),
-        "诊断": (installer_executable, f'diagnose --program-root "{program_root}" --data-root "{data_root}" --config-root "{config_root}"'),
-        "卸载": (installer_executable, f'uninstall --program-root "{program_root}" --version "{version}"'),
-        "更新": (updater_executable, f'update --program-root "{program_root}" --data-root "{data_root}" --config-root "{config_root}"'),
+        "启动": (installer_executable, ("launch", *common)),
+        "备份": (installer_executable, ("backup", *common)),
+        "诊断": (installer_executable, (
+            "diagnose", "--program-root", str(program_root), "--data-root", str(data_root),
+            "--config-root", str(config_root),
+        )),
+        "卸载": (installer_executable, ("uninstall", "--program-root", str(program_root), "--version", version)),
+        "更新": (updater_executable, (
+            "update", "--program-root", str(program_root), "--data-root", str(data_root),
+            "--config-root", str(config_root),
+        )),
     }
     # 开机自启同样通过安装器设置运行环境，不再直接启动缺少配置的主程序。
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE) as key:
-        winreg.SetValueEx(key, PRODUCT_NAME, 0, winreg.REG_SZ, f'"{installer_executable}" launch {common} --resident')
+        winreg.SetValueEx(
+            key, PRODUCT_NAME, 0, winreg.REG_SZ,
+            subprocess.list2cmdline([str(installer_executable), "launch", *common, "--resident"]),
+        )
     for folder in (desktop, start_menu):
         if folder is not None:
             folder.mkdir(parents=True, exist_ok=True)
