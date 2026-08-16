@@ -14,9 +14,10 @@ import webbrowser
 import datetime
 import sys
 import subprocess
+from io import BytesIO
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 from ledger.errors import DomainError
 from ledger import queries, services
 from ledger import field_mapping
@@ -151,6 +152,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         for key, value in (headers or {}).items():
             self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_file(self, data, filename, content_type):
+        """发送内存中的导出文件，文件不写入安装目录或数据库目录。"""
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(filename)}")
+        self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
 
@@ -317,6 +327,8 @@ class Handler(BaseHTTPRequestHandler):
             self._api_field_mapping(method, parts, qs)
         elif resource == "config":
             self._api_config(method, parts, qs)
+        elif resource == "export":
+            self._api_export(method, parts, qs)
         else:
             self._err(404, "unknown resource")
 
@@ -681,6 +693,58 @@ class Handler(BaseHTTPRequestHandler):
             self._err(403 if '已归档' in str(exc) else 409 if '父项目' in str(exc) else 400, str(exc))
         except ValueError:
             self._err(400, "invalid id")
+        finally:
+            conn.close()
+
+    # ---------- Excel 导出 ----------
+    def _api_export(self, method, parts, qs):
+        """按页面当前筛选条件生成 Excel；只读导出不改变业务数据。"""
+        if method != "GET" or parts:
+            self._err(405, "method not allowed"); return
+        resource = qs.get("resource", [""])[0]
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            self._err(500, "未安装 openpyxl"); return
+        conn = get_db()
+        try:
+            workbook = Workbook()
+            sheet = workbook.active
+            if resource == "enterprises":
+                q = qs.get("q", [""])[0].strip()
+                where = ["e.is_deleted=0"]; params = []
+                if q:
+                    where.append("(e.name LIKE ? OR e.credit_code LIKE ? OR e.district LIKE ? OR e.enterprise_type LIKE ?)")
+                    like = f"%{q}%"; params.extend([like, like, like, like])
+                rows = conn.execute(
+                    "SELECT e.name, e.credit_code, e.enterprise_type, e.district, e.qualifications, "
+                    "(SELECT COUNT(*) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0), "
+                    "(SELECT COALESCE(SUM(p.total_amount),0) FROM project p WHERE p.enterprise_id=e.id AND p.is_deleted=0) "
+                    f"FROM enterprise e WHERE {' AND '.join(where)} ORDER BY e.id DESC", params).fetchall()
+                sheet.title = "企业结果"
+                sheet.append(["企业名称", "统一社会信用代码", "企业类型", "区镇", "资质", "项目数", "累计金额(万元)"])
+                for row in rows: sheet.append(list(row))
+                filename = "企业当前结果.xlsx"
+            elif resource == "reminders":
+                days = int(qs.get("days", ["90"])[0])
+                rows = conn.execute(
+                    "SELECT p.name, p.level, n.node_type, n.plan_date, n.status, "
+                    "(julianday(n.plan_date)-julianday(date('now','localtime'))) "
+                    "FROM node n JOIN project p ON n.project_id=p.id "
+                    "WHERE n.status!='已完成' AND n.plan_date IS NOT NULL "
+                    "AND (julianday(n.plan_date)-julianday(date('now','localtime'))) <= ? "
+                    "ORDER BY n.plan_date", (days,)).fetchall()
+                sheet.title = "提醒结果"
+                sheet.append(["项目名称", "层级", "节点类型", "计划时间", "状态", "剩余天数"])
+                for row in rows: sheet.append(list(row))
+                filename = "提醒当前结果.xlsx"
+            else:
+                self._err(400, "unknown export resource"); return
+            for cell in sheet[1]: cell.font = cell.font.copy(bold=True)
+            output = BytesIO(); workbook.save(output)
+            self._send_file(output.getvalue(), filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        except (ValueError, TypeError):
+            self._err(400, "invalid export parameters")
         finally:
             conn.close()
 

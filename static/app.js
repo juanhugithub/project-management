@@ -1344,6 +1344,14 @@ $("#btn-st-export").addEventListener("click", exportCSV);
 $("#st-by").addEventListener("change", loadStats);
 $("#rm-days").addEventListener("change", loadReminders);
 $("#btn-rm-refresh").addEventListener("click", loadReminders);
+$("#btn-rm-export").addEventListener("click", () => {
+  window.location.href = "/api/export?resource=reminders&days=" + encodeURIComponent($("#rm-days").value);
+  trackUsage("提醒", "导出当前结果");
+});
+$("#btn-enterprise-export").addEventListener("click", () => {
+  window.location.href = "/api/export?resource=enterprises&q=" + encodeURIComponent(state.enterprisePage.q || "");
+  trackUsage("企业", "导出当前结果");
+});
 $("#btn-usage-refresh").addEventListener("click", loadUsage);
 $("#btn-ui-text-save").addEventListener("click", saveUiTexts);
 $("#btn-ui-text-reset").addEventListener("click", resetUiTexts);
