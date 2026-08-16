@@ -7,8 +7,10 @@
 """
 
 import json
+import errno
 import os
 import sqlite3
+import socket
 import threading
 import webbrowser
 import datetime
@@ -49,6 +51,41 @@ class LedgerHTTPServer(ThreadingHTTPServer):
 
     daemon_threads = True
     allow_reuse_address = False
+
+
+PORT_CONFLICT_MESSAGE = (
+    f"科技项目台账无法启动：本机端口 {PORT} 已被占用。\n\n"
+    "如果台账已经打开，请直接使用已有浏览器页面；如果没有，请关闭占用该端口的程序后重试。\n"
+    f"服务地址：http://{HOST}:{PORT}"
+)
+
+
+def _is_address_in_use(error: OSError) -> bool:
+    """识别 Windows 10048 及常见 Unix 端口占用错误。"""
+    return getattr(error, "winerror", None) == 10048 or error.errno in {errno.EADDRINUSE, 10048}
+
+
+def _port_is_occupied() -> bool:
+    """在初始化数据库前确认网页服务端口是否已有监听者。"""
+    try:
+        with socket.create_connection((HOST, PORT), timeout=0.2):
+            return True
+    except OSError:
+        return False
+
+
+def _show_startup_error(message: str) -> None:
+    """为无控制台的安装版显示可操作的启动错误。"""
+    print(f"[错误] {message}", file=sys.stderr)
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(None, message, "科技项目台账", 0x10)
+    except (AttributeError, OSError):
+        # 非 Windows 测试环境或极少数无 User32 的运行环境只保留 stderr。
+        pass
 
 
 def _windows_process_image_paths():
@@ -1303,13 +1340,24 @@ class Handler(BaseHTTPRequestHandler):
 def main(open_browser=True):
     # 更新到新版本或重复点击启动入口时，先清理同一安装根目录中的旧版本进程。
     stop_previous_installed_versions()
+    # 端口冲突必须在建库和自动备份前结束，避免重复启动触碰正式数据。
+    if _port_is_occupied():
+        _show_startup_error(PORT_CONFLICT_MESSAGE)
+        return 1
     init_db()
     try:
         import backup
         backup.auto_backup_if_needed()
     except Exception:
         pass
-    server = LedgerHTTPServer((HOST, PORT), Handler)
+    try:
+        server = LedgerHTTPServer((HOST, PORT), Handler)
+    except OSError as error:
+        # 预检查与 bind 之间仍可能发生竞态，统一转成用户可理解的提示。
+        if _is_address_in_use(error):
+            _show_startup_error(PORT_CONFLICT_MESSAGE)
+            return 1
+        raise
     url = f"http://{HOST}:{PORT}"
     print(f"科技项目台账已启动：{url}")
     print("按 Ctrl+C 停止")
@@ -1325,4 +1373,4 @@ def main(open_browser=True):
 
 
 if __name__ == "__main__":
-    main(open_browser="--resident" not in sys.argv)
+    raise SystemExit(main(open_browser="--resident" not in sys.argv))
