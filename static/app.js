@@ -235,6 +235,16 @@ async function checkForUpdate(autoApply = false) {
   const banner = $("#update-banner");
   try {
     const result = await api("/update");
+    const pageVersion = document.querySelector('meta[name="app-version"]')?.content || "";
+    if (pageVersion && pageVersion === result.current_version) sessionStorage.removeItem("ledger-version-reloaded");
+    // 更新器替换程序目录后，已有浏览器标签页可能仍保留旧 DOM；版本落后时强制重载整页。
+    const reloadedFor = sessionStorage.getItem("ledger-version-reloaded");
+    if (pageVersion && result.current_version && pageVersion !== result.current_version && reloadedFor !== result.current_version) {
+      banner.classList.add("hidden");
+      sessionStorage.setItem("ledger-version-reloaded", result.current_version);
+      location.reload();
+      return { configured: true, available: true, reloading: true };
+    }
     if (!result.update_available) { banner.classList.add("hidden"); return { configured: true, available: false }; }
     if (autoApply) {
       banner.classList.add("hidden");
