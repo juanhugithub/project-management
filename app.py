@@ -474,7 +474,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.server.shutdown()
                     self.server.server_close()
                     subprocess.Popen(
-                        [str(new_exe), "--resident"], env=os.environ.copy(), close_fds=True,
+                        [str(new_exe), "--resident", "--open-browser"], env=os.environ.copy(), close_fds=True,
                         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                     )
                 except Exception as error:
@@ -1314,7 +1314,7 @@ def main(open_browser=True):
     print(f"科技项目台账已启动：{url}")
     print("按 Ctrl+C 停止")
     # 自动打开浏览器（延迟，避免和启动抢）
-    if open_browser:
+    if open_browser or "--open-browser" in sys.argv:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()

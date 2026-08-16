@@ -178,7 +178,7 @@ def test_update_api_reads_install_paths_from_install_locations(tmp_path, monkeyp
         "data_root": data_root,
         "config_root": config_root,
     }
-    assert started == [[str(program_root / "0.2.0" / "项目台账" / "项目台账.exe"), "--resident"]]
+    assert started == [[str(program_root / "0.2.0" / "项目台账" / "项目台账.exe"), "--resident", "--open-browser"]]
     assert handler.server.stopped is True
     assert events == ["shutdown", "close", "start"]
 
