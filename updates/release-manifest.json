@@ -1,8 +1,8 @@
 {
-  "version": "0.2.15",
-  "installer_url": "https://gitee.com/juanhu6/project-management/releases/download/0.2.15/%E5%8F%B0%E8%B4%A6%E5%AE%89%E8%A3%85%E5%99%A8.exe",
-  "installer_sha256": "19bfd1f8fb8a8d0b6deea97fcd2ded70e89165e758782d0b13d205a6794f1038",
+  "version": "0.2.16",
+  "installer_url": "https://gitee.com/juanhu6/project-management/releases/download/0.2.16/%E5%8F%B0%E8%B4%A6%E5%AE%89%E8%A3%85%E5%99%A8.exe",
+  "installer_sha256": "1fbc6318f0e685829f1af7eb08c17a5234c26fd42d4c0db35e42504a095e6cca",
   "notes": [
-    "科技项目台账 0.2.15"
+    "科技项目台账 0.2.16"
   ]
 }
