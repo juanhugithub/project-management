@@ -100,6 +100,13 @@ def _pick_sheet(wb):
     return None
 
 
+def _normalize_header(value):
+    """统一模板表头名称；必填星号仅用于展示，不参与字段映射。"""
+    if value is None:
+        return ""
+    return str(value).strip().removesuffix("*").strip()
+
+
 def normalized_rows(wb):
     """把 Excel 解析为 G4 标准行；本函数只解析，不写任何数据库。"""
     sheet = _pick_sheet(wb)
@@ -107,7 +114,9 @@ def normalized_rows(wb):
         return []
     rows_iter = sheet.iter_rows(values_only=True)
     try:
-        header = [str(h).strip() if h is not None else "" for h in next(rows_iter)]
+        # make_template.py 会给必填列追加“*”。解析器必须使用去除展示标记后的
+        # 规范名称，否则官方模板生成的文件反而无法被官方导入器识别。
+        header = [_normalize_header(h) for h in next(rows_iter)]
     except StopIteration:
         return []
     index = {name: position for position, name in enumerate(header) if name}
@@ -118,11 +127,15 @@ def normalized_rows(wb):
 
     parsed = []
     for row in rows_iter:
-        parsed.append({
+        normalized = {
             "enterprise_name": clean_str(cell(row, "企业名称")),
             "credit_code": clean_str(cell(row, "统一社会信用代码")),
             "enterprise_type": clean_str(cell(row, "企业类型")),
             "district": clean_str(cell(row, "区镇")),
+            "qualifications": clean_str(cell(row, "资质")),
+            "enterprise_contact_person": clean_str(cell(row, "企业联系人")),
+            "enterprise_contact_phone": clean_str(cell(row, "企业联系电话")),
+            "enterprise_address": clean_str(cell(row, "企业地址")),
             "project_name": clean_str(cell(row, "项目名称")),
             "project_no": clean_str(cell(row, "项目编号/文号")),
             "level": clean_str(cell(row, "层级")),
@@ -131,7 +144,15 @@ def normalized_rows(wb):
             "start_date": parse_date(cell(row, "开始日期")),
             "end_date": parse_date(cell(row, "结束日期")),
             "stage": clean_str(cell(row, "当前阶段")),
-        })
+            "match_ratio": parse_number(cell(row, "配套比例")),
+            "leader": clean_str(cell(row, "项目负责人")),
+            "project_contact_phone": clean_str(cell(row, "联系人手机号")),
+            "project_note": clean_str(cell(row, "备注")),
+        }
+        # 工作表可能因为历史格式或预设样式存在尾部空行。只有至少一个受支持字段
+        # 有值时才进入暂存，避免产生“0 条有效数据却导入成功”的空批次。
+        if any(value is not None for value in normalized.values()):
+            parsed.append(normalized)
     return parsed
 
 

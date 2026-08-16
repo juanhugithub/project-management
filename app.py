@@ -736,7 +736,10 @@ class Handler(BaseHTTPRequestHandler):
             self._err(500, "缺少 import_excel.py"); return
         try:
             workflow = ImportWorkflow(DB_PATH, IMPORT_ARCHIVE_DIR, apply_schema=False)
-            result = workflow.parse_and_stage(body.get("name") or "upload.xlsx", raw, normalized_rows(wb), "excel-v1")
+            rows = normalized_rows(wb)
+            if not rows:
+                raise DomainError("项目模板中没有可导入的数据行")
+            result = workflow.parse_and_stage(body.get("filename") or "项目导入.xlsx", raw, rows, "excel-v1")
             result["preview"] = workflow.preview(result["id"])
         except (DomainError, sqlite3.Error) as e:
             self._err(400, f"导入暂存失败: {e}"); return

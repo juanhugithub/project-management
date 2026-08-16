@@ -3,6 +3,7 @@ import hashlib
 import json
 import shutil
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from ledger.errors import DomainError
@@ -24,7 +25,7 @@ class ImportWorkflow:
         self.archive_dir.mkdir(parents=True, exist_ok=True)
         if apply_schema:
             # 测试临时库和维护者明确指定的目标库才允许执行迁移；应用服务绝不迁移正式库。
-            with self._conn() as conn:
+            with closing(self._conn()) as conn:
                 apply_migrations(conn)
 
     def _conn(self):
@@ -46,7 +47,7 @@ class ImportWorkflow:
             return "field_error", "企业名称和项目名称必填"
         enterprise = conn.execute("SELECT id FROM enterprise WHERE credit_code=? AND is_deleted=0", (code,)).fetchone()
         if enterprise and conn.execute("SELECT 1 FROM project WHERE project_no=? AND enterprise_id=? AND is_deleted=0", (number, enterprise['id'])).fetchone():
-            return "duplicate", None
+            return "duplicate", "项目编号/文号与承担企业组合已存在"
         start = self._text(row.get("start_date"))
         if start and start[:4] in services.archived_years(conn):
             return "archived_conflict", "该年度项目已归档"
@@ -54,18 +55,29 @@ class ImportWorkflow:
 
     def parse_and_stage(self, file_name, file_bytes, rows, field_map_version):
         """保存不可覆盖的原始文件并逐行写暂存，不触碰 enterprise/project。"""
+        rows = list(rows)
+        if not rows:
+            # 空批次没有可供人工确认的业务事实，必须在创建归档和暂存记录前拒绝。
+            raise DomainError("项目模板中没有可导入的数据行")
         digest = hashlib.sha256(file_bytes).hexdigest()
         safe_name = Path(file_name).name or "upload.xlsx"
         archive_path = self.archive_dir / f"{digest}-{safe_name}"
         if not archive_path.exists():
             archive_path.write_bytes(file_bytes)
-        with self._conn() as conn:
+        with closing(self._conn()) as conn:
+            seen_identities = set()
             with conn:
                 cur = conn.execute("INSERT INTO import_batch(file_name,file_sha256,field_map_version,archive_path,status) VALUES(?,?,?,?, 'staged')", (safe_name, digest, field_map_version, str(archive_path)))
                 batch_id = cur.lastrowid
                 for row_no, raw in enumerate(rows, 1):
                     normalized = {key: self._text(value) for key, value in raw.items()}
-                    conclusion, error = self._conclusion(conn, normalized)
+                    identity = (normalized.get("credit_code"), normalized.get("project_no"))
+                    if all(identity) and identity in seen_identities:
+                        conclusion, error = "duplicate", "项目编号/文号与承担企业组合在文件内重复"
+                    else:
+                        conclusion, error = self._conclusion(conn, normalized)
+                        if conclusion in ("new_enterprise,new_project", "new_project"):
+                            seen_identities.add(identity)
                     conn.execute("INSERT INTO import_staging(batch_id,row_no,raw_json,conclusion,error) VALUES(?,?,?,?,?)", (batch_id, row_no, json.dumps(normalized, ensure_ascii=False, sort_keys=True), conclusion, error))
         return {"id": batch_id}
 
@@ -77,7 +89,7 @@ class ImportWorkflow:
         if not archive_path.exists():
             archive_path.write_bytes(file_bytes)
         seen_codes = set()
-        with self._conn() as conn:
+        with closing(self._conn()) as conn:
             # 企业类型和区镇沿用系统配置字典，预览阶段就明确指出不匹配值。
             allowed_values = {}
             for item in conn.execute(
@@ -120,7 +132,7 @@ class ImportWorkflow:
 
     def preview_enterprises(self, batch_id):
         """返回企业导入的逐行结论和汇总，供页面人工确认。"""
-        with self._conn() as conn:
+        with closing(self._conn()) as conn:
             batch = conn.execute(
                 "SELECT id FROM import_batch WHERE id=? AND field_map_version='enterprise-v1'", (batch_id,)
             ).fetchone()
@@ -144,7 +156,7 @@ class ImportWorkflow:
             "name", "credit_code", "enterprise_type", "district", "qualifications",
             "contact_person", "contact_phone", "address", "note",
         )
-        with self._conn() as conn:
+        with closing(self._conn()) as conn:
             batch = conn.execute(
                 "SELECT * FROM import_batch WHERE id=? AND field_map_version='enterprise-v1'", (batch_id,)
             ).fetchone()
@@ -179,17 +191,21 @@ class ImportWorkflow:
         return {"status": "committed", "id": batch_id, "enterprise_count": len(rows)}
 
     def preview(self, batch_id):
-        with self._conn() as conn:
+        with closing(self._conn()) as conn:
             batch = conn.execute("SELECT id FROM import_batch WHERE id=?", (batch_id,)).fetchone()
             if not batch:
                 raise DomainError("导入批次不存在")
             rows = conn.execute("SELECT row_no,conclusion,error FROM import_staging WHERE batch_id=? ORDER BY row_no", (batch_id,)).fetchall()
-        result_rows = [{"row_no": row['row_no'], "conclusion": row['conclusion']} for row in rows]
+        # 预览必须携带具体原因；否则前端只能显示“存在阻断”，用户无法定位 Excel 行。
+        result_rows = [
+            {"row_no": row["row_no"], "conclusion": row["conclusion"], "error": row["error"]}
+            for row in rows
+        ]
         return {"rows": result_rows, "summary": {"new_enterprise": sum(row['conclusion'] == 'new_enterprise,new_project' for row in rows), "new_project": sum(row['conclusion'] in ('new_enterprise,new_project', 'new_project') for row in rows), "blocking": sum(row['conclusion'] not in ('new_enterprise,new_project', 'new_project') for row in rows)}}
 
     def confirm(self, batch_id):
         """HUMAN 确认入口：所有企业、项目、审计与批次状态同一事务提交。"""
-        with self._conn() as conn:
+        with closing(self._conn()) as conn:
             batch = conn.execute("SELECT * FROM import_batch WHERE id=?", (batch_id,)).fetchone()
             if not batch:
                 raise DomainError("导入批次不存在")
@@ -204,12 +220,38 @@ class ImportWorkflow:
                         row = json.loads(staged['raw_json'])
                         enterprise = conn.execute("SELECT * FROM enterprise WHERE credit_code=? AND is_deleted=0", (row['credit_code'],)).fetchone()
                         if enterprise is None:
-                            enterprise_payload = {"name": row['enterprise_name'], "credit_code": row['credit_code'], "enterprise_type": row.get('enterprise_type'), "district": row.get('district')}
+                            # Excel 模板中的企业字段在确认事务内一次性完整写入，不能只保留
+                            # 名称、信用代码等身份字段而静默丢弃联系人和地址。
+                            enterprise_payload = {
+                                "name": row["enterprise_name"],
+                                "credit_code": row["credit_code"],
+                                "enterprise_type": row.get("enterprise_type"),
+                                "district": row.get("district"),
+                                "qualifications": row.get("qualifications"),
+                                "contact_person": row.get("enterprise_contact_person"),
+                                "contact_phone": row.get("enterprise_contact_phone"),
+                                "address": row.get("enterprise_address"),
+                            }
                             enterprise = services.create(conn, 'enterprise', enterprise_payload, commit=False)
                             enterprise_id = enterprise['id']
                         else:
                             enterprise_id = enterprise['id']
-                        project_payload = {"name": row['project_name'], "project_no": row['project_no'], "enterprise_id": enterprise_id, "level": row.get('level'), "category": row.get('category'), "total_amount": row.get('total_amount'), "start_date": row.get('start_date'), "end_date": row.get('end_date'), "stage": row.get('stage')}
+                        # 项目扩展字段与模板列保持一一对应，确认成功后用户填写的信息应完整可见。
+                        project_payload = {
+                            "name": row["project_name"],
+                            "project_no": row["project_no"],
+                            "enterprise_id": enterprise_id,
+                            "level": row.get("level"),
+                            "category": row.get("category"),
+                            "total_amount": row.get("total_amount"),
+                            "start_date": row.get("start_date"),
+                            "end_date": row.get("end_date"),
+                            "stage": row.get("stage"),
+                            "match_ratio": row.get("match_ratio"),
+                            "leader": row.get("leader"),
+                            "contact_phone": row.get("project_contact_phone"),
+                            "note": row.get("project_note"),
+                        }
                         project = services.create(conn, 'project', project_payload, commit=False)
                         conn.execute("UPDATE audit_log SET source_batch=? WHERE object_type IN ('enterprise','project') AND object_id IN (?,?) AND source_batch IS NULL", (str(batch_id), enterprise_id, project['id']))
                     conn.execute("UPDATE import_batch SET status='committed', committed_at=datetime('now','localtime') WHERE id=?", (batch_id,))

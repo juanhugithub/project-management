@@ -324,10 +324,10 @@
 
       <div id="mtab-excel" class="hidden">
         <div class="excel-tools">
-          <button id="btn-modal-template" class="ghost">📄 下载模板（一张表，自动归仓）</button>
+          <button id="btn-modal-template" class="ghost template-download">下载模板（一张表，自动归仓）</button>
         </div>
-        <div id="drop-zone" class="drop-zone">
-          <div class="dz-icon">📥</div>
+        <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="选择或拖入 Excel 文件">
+          <div class="dz-icon" aria-hidden="true"><span></span></div>
           <div class="dz-text">把填好的 Excel 拖到这里</div>
           <div id="drop-zone-sub" class="dz-sub">一张总表包含企业与项目所有字段，系统自动拆分归仓（.xlsx）</div>
           <input type="file" id="file-import2" accept=".xlsx" class="hidden">
@@ -340,7 +340,7 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <!-- 拖拽导入遮罩 -->
-  <div class="drag-overlay">📥 松开鼠标，导入 Excel 文件</div>
+  <div class="drag-overlay"><div class="drag-overlay-content"><div class="dz-icon" aria-hidden="true"><span></span></div><span>松开鼠标，导入 Excel 文件</span></div></div>
 
   <script type="module" src="/static/app.js?v=__APP_VERSION__"></script>
 </body>

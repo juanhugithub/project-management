@@ -104,6 +104,24 @@ def test_project_and_enterprise_queries_support_cancellation():
     assert not missing, f"列表查询缺少 AbortController/Signal 或请求协调能力: {missing}"
 
 
+def test_project_excel_import_uses_preview_and_explicit_confirmation():
+    """项目 Excel 上传只能先预览，用户确认后才刷新列表并报告成功。"""
+    source = read(STATIC / "components" / "importer.js")
+    assert "renderProjectPreview" in source
+    assert re.search(r"/import/\$\{result\.id\}/confirm", source)
+    assert "全部导入成功" not in source, "不得再用旧版 0/0 统计误报导入成功"
+    assert "summary.blocking" in source
+
+
+def test_excel_drop_zone_has_layered_component_styles_without_emoji_dependency():
+    """模块化样式必须包含完整拖拽区规则，上传图标不依赖单位电脑的 Emoji 字体。"""
+    html = read(STATIC / "index.html")
+    css = read(STATIC / "style" / "components.css")
+    assert all(selector in css for selector in (".drop-zone", ".dz-icon", ".drag-overlay", ".excel-tools"))
+    assert "📥" not in html and "📄" not in html
+    assert 'role="button"' in html and 'tabindex="0"' in html
+
+
 def test_layered_css_files_exist_and_every_javascript_passes_node_check():
     """CSS 分层和逐文件语法检查共同保证拆分后仍可被浏览器加载。"""
     layers = ("tokens.css", "base.css", "layout.css", "components.css", "pages.css")

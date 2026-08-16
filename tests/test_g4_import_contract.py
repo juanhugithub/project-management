@@ -66,7 +66,7 @@ def test_parse_and_stage_produces_deterministic_preview_without_formal_writes(tm
     batch = workflow.parse_and_stage("g4.xlsx", source, [_row()], "g4-v1")
 
     preview = workflow.preview(batch["id"])
-    assert preview["rows"] == [{"row_no": 1, "conclusion": "new_enterprise,new_project"}]
+    assert preview["rows"] == [{"row_no": 1, "conclusion": "new_enterprise,new_project", "error": None}]
     assert preview["summary"] == {"new_enterprise": 1, "new_project": 1, "blocking": 0}
     assert _counts(tmp_db) == before, "暂存预览阶段向 enterprise/project 正式表写入"
 
@@ -83,6 +83,21 @@ def test_blocking_row_cannot_be_confirmed_and_leaves_zero_formal_writes(tmp_db, 
     with pytest.raises(workflow.ConfirmationBlocked):
         workflow.confirm(batch["id"])
     assert _counts(tmp_db) == before, "有阻断行仍在确认提交前写入正式表"
+
+
+def test_empty_project_batch_is_rejected_before_staging(tmp_db, tmp_path):
+    """没有有效数据行时不得创建可被误认为成功的空导入批次。"""
+    from ledger.errors import DomainError
+
+    workflow = _workflow(tmp_db, tmp_path)
+    with pytest.raises(DomainError, match="没有可导入的数据行"):
+        workflow.parse_and_stage("empty.xlsx", b"empty workbook", [], "excel-v1")
+
+    conn = db_conn(tmp_db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM import_batch").fetchone()[0] == 0
+    finally:
+        conn.close()
 
 
 def test_enterprise_identity_is_credit_code_never_automatic_name_merge(tmp_db, tmp_path):
@@ -102,6 +117,11 @@ def test_enterprise_identity_is_credit_code_never_automatic_name_merge(tmp_db, t
 def test_duplicate_key_detected_and_missing_project_number_never_auto_posted(tmp_db, tmp_path):
     """同一业务键为重复；无项目编号仅暂存为 missing_identity，不能自动入账。"""
     workflow = _workflow(tmp_db, tmp_path)
+    repeated = workflow.parse_and_stage("repeated.xlsx", b"repeated", [_row(), _row()], "g4-v1")
+    repeated_rows = workflow.preview(repeated["id"])["rows"]
+    assert [row["conclusion"] for row in repeated_rows] == ["new_enterprise,new_project", "duplicate"]
+    assert repeated_rows[1]["error"] == "项目编号/文号与承担企业组合在文件内重复"
+
     first = workflow.parse_and_stage("first.xlsx", b"first", [_row()], "g4-v1")
     workflow.confirm(first["id"])
     duplicate = workflow.parse_and_stage("again.xlsx", b"again", [_row()], "g4-v1")
@@ -125,6 +145,39 @@ def test_confirm_failure_rolls_back_entire_batch_without_orphan_enterprise(tmp_d
     with pytest.raises(Exception, match="forced G4 project failure"):
         workflow.confirm(batch["id"])
     assert _counts(tmp_db) == {"enterprise": 0, "project": 0}, "提交失败遗留企业或半条项目"
+
+
+def test_confirm_preserves_all_supported_template_fields(tmp_db, tmp_path):
+    """确认入库必须完整保留模板中的企业联系信息和项目扩展字段。"""
+    workflow = _workflow(tmp_db, tmp_path)
+    row = _row()
+    row.update({
+        "qualifications": "高新资质",
+        "enterprise_contact_person": "张三",
+        "enterprise_contact_phone": "0512-12345678",
+        "enterprise_address": "测试路1号",
+        "match_ratio": 1,
+        "leader": "李四",
+        "project_contact_phone": "13800000000",
+        "project_note": "完整字段",
+    })
+    batch = workflow.parse_and_stage("full.xlsx", b"full fields", [row], "excel-v1")
+    workflow.confirm(batch["id"])
+
+    conn = db_conn(tmp_db)
+    try:
+        enterprise = conn.execute(
+            "SELECT qualifications,contact_person,contact_phone,address FROM enterprise WHERE credit_code=?",
+            (row["credit_code"],),
+        ).fetchone()
+        project = conn.execute(
+            "SELECT match_ratio,leader,contact_phone,note FROM project WHERE project_no=?",
+            (row["project_no"],),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert tuple(enterprise) == ("高新资质", "张三", "0512-12345678", "测试路1号")
+    assert tuple(project) == (1.0, "李四", "13800000000", "完整字段")
 
 
 def test_import_batch_persists_sha_metadata_staging_and_commit_audit(tmp_db, tmp_path):
