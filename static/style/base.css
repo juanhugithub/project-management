@@ -1,0 +1,23 @@
+/* 基础元素规则只定义一次，保证键盘操作和减少动效偏好在全部页面生效。 */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--paper); }
+body { min-width: 320px; padding-left: 224px; color: var(--ink); background: var(--paper); font: 14px/1.65 var(--font); }
+button, input, select, textarea { font: inherit; }
+button { min-height: 36px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--surface); cursor: pointer; transition: all .2s ease; }
+button:hover { border-color: #c7c7c2; background: #f1f1ee; transform: translateY(-1px); }
+button:active { transform: translateY(1px); }
+button.primary { border-color: var(--ink); color: #fff; background: var(--ink); box-shadow: 0 5px 12px rgba(31, 31, 31, .12); }
+button.primary:hover { background: #3c3c39; }
+button.ghost { background: transparent; }
+button.small { min-height: 30px; padding: 4px 8px; border-radius: 8px; font-size: 12px; }
+button.danger { border-color: #d8aaa3; color: var(--red); background: #fffafa; }
+button.danger:hover { background: var(--red-soft); }
+button.x { min-height: auto; padding: 4px; border: 0; color: var(--muted); font-size: 18px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #8bb69a; outline-offset: 2px; }
+a { color: var(--ink); text-decoration-color: var(--green); text-underline-offset: 3px; }
+h1 { font-size: clamp(28px, 3vw, 40px); font-weight: 650; letter-spacing: -.04em; line-height: 1.18; }
+.hidden { display: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+@media (max-width: 1050px) { body { padding-left: 0; } }

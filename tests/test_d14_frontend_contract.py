@@ -22,6 +22,11 @@ def read_static(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
 
 
+def read_all_javascript() -> str:
+    """模块化后按整个前端脚本树检查接口，不再假设所有逻辑位于 app.js。"""
+    return "\n".join(path.read_text(encoding="utf-8") for path in STATIC.rglob("*.js"))
+
+
 def test_d14_static_javascript_has_valid_syntax():
     """视觉重构不能让原生脚本在加载前就失败。"""
     node = shutil.which("node")
@@ -40,7 +45,7 @@ def test_d14_static_javascript_has_valid_syntax():
 def test_d14_preserves_existing_api_paths_and_dom_anchors():
     """D14 只能换展示层，不得断开既有原生 JS、页面锚点和业务 API。"""
     html = read_static("index.html")
-    js = read_static("app.js")
+    js = read_all_javascript()
 
     required_api_paths = (
         "/dict", "/enterprises", "/projects", "/fundings", "/nodes",
@@ -62,10 +67,7 @@ def test_d14_preserves_existing_api_paths_and_dom_anchors():
 
 def test_d14_project_detail_keeps_all_six_funding_facts_visible():
     """项目详情首屏必须同时给出六项资金事实，禁止回到含糊的“已到位”。"""
-    js = read_static("app.js")
-    detail_start = js.index("async function showProjectDetail")
-    detail_end = js.index("function kv", detail_start)
-    detail = js[detail_start:detail_end]
+    detail = read_static("pages/projects.js")
 
     required_labels = ("项目总金额", "计划拨付", "已拨付", "已到账", "待拨", "资金勾稽")
     missing_labels = [label for label in required_labels if label not in detail]
@@ -77,16 +79,16 @@ def test_d14_project_detail_keeps_all_six_funding_facts_visible():
 def test_project_table_displays_district_and_supports_all_business_field_sorting():
     """项目总览除操作列外全部支持排序，区镇直接显示承担企业对应的区镇。"""
     html = read_static("index.html")
-    js = read_static("app.js")
+    js = read_all_javascript()
     sortable_fields = re.findall(r'<th[^>]*data-sort="([^"]+)"', html)
     assert sortable_fields == [
         "name", "project_no", "level", "category", "enterprise_name",
         "enterprise_district", "total_amount", "disbursed_total", "stage",
     ]
     assert "<th>操作</th>" in html
-    assert "PROJECT_SORT_FIELDS" in js and "function sortProjects" in js
-    assert "p.enterprise_district" in js, "项目行必须显示承担企业的区镇字段"
-    assert "p.disbursed_total" in js, "已拨付列必须使用项目接口的明确资金口径"
+    assert "SORT_FIELDS" in js and "sortedItems" in js
+    assert "enterprise_district" in js, "项目行必须显示承担企业的区镇字段"
+    assert "disbursed_total" in js, "已拨付列必须使用项目接口的明确资金口径"
 
 
 def test_d14_critical_information_is_not_hover_only_and_keyboard_focus_is_visible():

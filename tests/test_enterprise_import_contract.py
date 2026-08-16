@@ -107,9 +107,13 @@ def test_enterprise_modal_exposes_template_preview_and_confirm_flow():
     """前端新增企业弹窗必须接入企业模板、上传预览和确认接口。"""
     root = Path(__file__).resolve().parents[1]
     html = (root / "static" / "index.html").read_text(encoding="utf-8")
-    script = (root / "static" / "app.js").read_text(encoding="utf-8")
+    # 导入流程已经拆到通用组件，契约覆盖入口与组件而不是单一入口文件。
+    script = "\n".join(
+        (root / "static" / path).read_text(encoding="utf-8")
+        for path in ("app.js", "components/importer.js")
+    )
     assert 'data-mtab="excel"' in html
-    assert 'kind === "project" || kind === "enterprise"' in script
+    assert 'kind === "enterprise" ? "/enterprise-import" : "/import"' in script
     assert '"/enterprise-import"' in script
     assert '"/api/enterprise-template"' in script
     assert "btn-confirm-enterprise-import" in script

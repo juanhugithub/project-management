@@ -6,7 +6,11 @@
   <meta name="app-version" content="__APP_VERSION__">
   <title>科技项目全生命周期台账</title>
   <link rel="icon" type="image/svg+xml" href="/static/brand-icon.svg?v=__APP_VERSION__">
-  <link rel="stylesheet" href="/static/style.css?v=__APP_VERSION__">
+  <link rel="stylesheet" href="/static/style/tokens.css?v=__APP_VERSION__">
+  <link rel="stylesheet" href="/static/style/base.css?v=__APP_VERSION__">
+  <link rel="stylesheet" href="/static/style/layout.css?v=__APP_VERSION__">
+  <link rel="stylesheet" href="/static/style/components.css?v=__APP_VERSION__">
+  <link rel="stylesheet" href="/static/style/pages.css?v=__APP_VERSION__">
 </head>
 <body>
   <header class="site-header">
@@ -333,11 +337,11 @@
     </div>
   </div>
 
-  <div id="toast" class="toast hidden"></div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <!-- 拖拽导入遮罩 -->
   <div class="drag-overlay">📥 松开鼠标，导入 Excel 文件</div>
 
-  <script src="/static/app.js?v=__APP_VERSION__"></script>
+  <script type="module" src="/static/app.js?v=__APP_VERSION__"></script>
 </body>
 </html>

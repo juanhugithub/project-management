@@ -1,0 +1,18 @@
+/* 全站唯一设计令牌：页面和组件只能引用变量，不再重复定义根变量。 */
+:root {
+  --ink: #1f1f1f;
+  --paper: #f7f7f5;
+  --surface: #fff;
+  --line: #e8e8e5;
+  --line-dark: #d7d7d2;
+  --muted: #7b7b76;
+  --green: #2f6b52;
+  --green-soft: #edf5ef;
+  --yellow: #9a6b18;
+  --yellow-soft: #fff8e8;
+  --red: #b4493c;
+  --red-soft: #fff1ef;
+  --shadow: 0 12px 38px rgba(33, 33, 30, .055);
+  --radius: 12px;
+  --font: "Inter", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
