@@ -263,7 +263,7 @@ async function loadEnterprisePage() {
   if (p.q) params.set("q", p.q);
   if (p.sort) { params.set("sort", p.sort); params.set("direction", p.direction); }
   const result = await api("/enterprises?" + params.toString());
-  state.enterprisePage = { ...p, ...result };
+  state.enterprisePage = { ...p, ...result, totalPages: result.total_pages ?? result.totalPages ?? 0 };
   renderEnterpriseTable();
 }
 
@@ -283,7 +283,7 @@ async function loadProjects() {
   }
   const qs = params.toString();
   const result = await api("/projects" + (qs ? "?" + qs : ""));
-  state.projectPage = { ...page, ...result };
+  state.projectPage = { ...page, ...result, totalPages: result.total_pages ?? result.totalPages ?? 0 };
   state.lastProjects = result.items || [];
   renderProjectTable(state.lastProjects);
   renderProjectPagination();

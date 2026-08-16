@@ -152,6 +152,7 @@ main { max-width:none; min-height:100vh; margin:0; padding:48px clamp(28px,5vw,7
 .workspace-hero h1 { font-size:34px; }
 .stats-hero { padding-bottom:18px; margin-bottom:4px; }
 .table-wrap { width:100%; }
+.table-wrap th { top:0; }
 .filters { padding:12px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.72); }
 .filters select,.filters input { background:#f8f8f6; }
 .dash-card { box-shadow:none; }.dash-panel,.usage-panel,.guide-section,.table-wrap,.detail { box-shadow:0 2px 12px rgba(31,31,31,.035); }
